@@ -3,6 +3,21 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# macOS
+# Finder metadata and resource forks
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+# Thumbnails, Spotlight, and filesystem events
+.Spotlight-V100
+.fseventsd/
+.Trashes
+.TemporaryItems
+.DocumentRevisions-V100
+# Files starting with ._ are AppleDouble resource forks
+._*
+
 # C extensions
 *.so
 
