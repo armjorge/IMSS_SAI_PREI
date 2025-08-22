@@ -1,0 +1,18 @@
+SAI_password: "Epharma2021"
+SAI_user: "EPH -161215-NS9"
+SAI_link: "https://ppsai-abasto.imss.gob.mx/abasto-web/reporteAltas"
+
+PREI_password: 'EPH161215NS9'
+PREI_user: '0000150462'
+PREI_link: "https://pispdigital.imss.gob.mx/piref/"
+
+CAMUNDA_password: "N29f6Mwif"
+CAMUNDA_user: "ArmandoJimenez"
+CAMUNDA_link: 
+
+SAGI_password: "Pharmas21"
+SAGI_user: "EPH161215NS9"
+SAGI_link: 
+
+PAQ_IMSS_2025_Dropbox: 'C:\Users\arman\Dropbox\FACT 2025\Copy of Generacion facturas IMSS 2024.xlsx'
+PAQ_IMSS_2025_Excel_sheet: 'Reporte Paq'
