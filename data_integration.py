@@ -238,3 +238,4 @@ class DataIntegration:
         else:
             print(f"❌ No se pudo determinar el archivo más reciente en {os.path.basename(path)}")
             return None, None
+        

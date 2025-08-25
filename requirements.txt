@@ -1,0 +1,41 @@
+# Web scraping and automation
+requests>=2.31.0
+selenium>=4.15.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Data processing
+pandas>=2.1.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+xlsxwriter>=3.1.0
+
+# HTTP handling and sessions
+urllib3>=2.0.0
+certifi>=2023.7.22
+
+# Date and time handling
+python-dateutil>=2.8.0
+
+# Configuration and environment
+python-dotenv>=1.0.0
+configparser>=6.0.0
+
+# Logging and monitoring
+loguru>=0.7.0
+
+# PDF processing (if needed for IMSS documents)
+PyPDF2>=3.0.0
+
+# Image processing (for captcha handling)
+Pillow>=10.0.0
+
+# Browser drivers management
+webdriver-manager>=4.0.0
+
+# Progress bars and CLI utilities
+tqdm>=4.66.0
+click>=8.1.0
+
+# Error handling and retries
+tenacity>=8.2.0
