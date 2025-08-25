@@ -89,7 +89,7 @@ class MiniImssApp:
                 #ORDERS_processed_path = os.path.join(self.working_folder, "SAI", "Orders_Procesados")
                 FACTURAS_processed_path = os.path.join(self.working_folder, "Facturas", "Consultas")
                 self.data_integration.integrar_datos(PREI_processed_path, ALTAS_processed_path, FACTURAS_processed_path)
-
+                
                 print("✅ Integración completada")
             elif choice == "0":
                 print("👋 ¡Hasta luego!")
