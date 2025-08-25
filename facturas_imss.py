@@ -16,7 +16,7 @@ class FACTURAS_IMSS:
     def __init__(self, working_folder, data_access):
         self.working_folder = working_folder
         self.data_access = data_access
-
+        
     def cargar_facturas(self):
         invoice_paths = [
             r'C:\Users\arman\Dropbox\FACT 2025'

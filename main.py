@@ -4,7 +4,8 @@ from helpers import message_print, create_directory_if_not_exists
 from web_automation_driver import WebAutomationDriver
 from SAI import SAI_MANAGEMENT
 from PREI import PREI_MANAGEMENT
-from facturas_imss import FACTURAS_IMSS 
+from facturas_imss import FACTURAS_IMSS
+from downloaded_files_manager import DownloadedFilesManager
 
 class MiniImssApp:
     def __init__(self):
@@ -12,7 +13,7 @@ class MiniImssApp:
         self.working_folder = os.path.join(self.folder_root, "Implementación")
         self.config_manager = ConfigManager(self.working_folder)
         self.web_driver = None
-        self.data_access = None
+        self.data_access = None 
 
     def initialize(self):
         """Inicializa los managers principales"""
@@ -32,7 +33,7 @@ class MiniImssApp:
         self.sai_manager = SAI_MANAGEMENT(self.working_folder, self.web_driver_manager, self.data_access)
         self.prei_manager = PREI_MANAGEMENT(self.working_folder, self.web_driver_manager, self.data_access)
         self.facturas_manager = FACTURAS_IMSS(self.working_folder, self.data_access)
-
+        self.downloaded_files_manager = DownloadedFilesManager(self.working_folder, self.data_access)
         print("✅ Inicialización completada")
         return True
 
@@ -53,21 +54,27 @@ class MiniImssApp:
             )).strip()
         
             if choice == "1":
-                temporal_altas_path = os.path.join(self.working_folder, "SAI", "Temporal downloads")
-                create_directory_if_not_exists(temporal_altas_path)
+                altas_path = os.path.join(self.working_folder, "SAI")
+                temporal_altas_path = os.path.join(altas_path, "Temporal downloads")
+                self.downloaded_files_manager.manage_downloaded_files(temporal_altas_path)
                 exito_descarga_altas = self.sai_manager.descargar_altas(temporal_altas_path)
                 if exito_descarga_altas:
                     print("✅ Descarga de Altas completada")
+                    self.downloaded_files_manager.manage_downloaded_files(temporal_altas_path)
                 else:
                     print("❌ Error en descarga de Altas")
             elif choice == "2":
                 PREI_path = os.path.join(self.working_folder, "PREI")
-                create_directory_if_not_exists(PREI_path)
-                exito_descarga_prei = self.prei_manager.descargar_PREI(PREI_path)
+                temporal_prei_path = os.path.join(PREI_path, 'Temporal downloads')
+                self.downloaded_files_manager.manage_downloaded_files(temporal_prei_path)
+                exito_descarga_prei = self.prei_manager.descargar_PREI(temporal_prei_path)
                 if exito_descarga_prei:
                     print("✅ Descarga de PREI completada")
+                    self.downloaded_files_manager.manage_downloaded_files(temporal_prei_path)
                 else:
                     print("⚠️ Descarga de PREI completada con archivos pendientes")
+                
+
             elif choice == "3":
                 print("📄 Cargando facturas...")
                 self.facturas_manager.cargar_facturas()

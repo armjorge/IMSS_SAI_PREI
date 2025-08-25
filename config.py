@@ -6,6 +6,7 @@ class ConfigManager:
     def __init__(self, working_folder):
         self.working_folder = working_folder
         self.config_path = os.path.join(working_folder, "config.yaml")
+        
 
     def yaml_creation(self, working_folder): 
         output_yaml = self.config_path

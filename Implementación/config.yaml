@@ -16,3 +16,80 @@ SAGI_link:
 
 PAQ_IMSS_2025_Dropbox: 'C:\Users\arman\Dropbox\FACT 2025\Copy of Generacion facturas IMSS 2024.xlsx'
 PAQ_IMSS_2025_Excel_sheet: 'Reporte Paq'
+
+columns_INSABI:
+  ITEM: int
+  RFC: str
+  RAZÓN SOCIAL: str
+  ALMACÉN ENTREGA: str
+  DIRECCIÓN ALMACÉN: str
+  INSTITUCIÓN REQUIRENTE: str
+  NÚMERO DE ORDEN DE SUMINISTRO: str
+  FECHA EXPEDICIÓN DE LA ORDEN: datetime64[ns]  # dd/mm/yyyy
+  FECHA LÍMITE DE ENTREGA DE LA ORDEN: datetime64[ns]  # dd/mm/yyyy
+  CLAVE INSUMO: str
+  DESCRIPCIÓN: str
+  CLUES: str
+  ENTIDAD DESTINO FINAL: str
+  CANTIDAD SOLICITADA: int
+  ESTATUS: str
+
+columns_IMSS_orders:
+  contrato: str
+  solicitud: str
+  orden: str
+  generacion: str
+  cveArticulo: str
+  fechaExpedicion: datetime64[ns]  # dd/mm/yyyy
+  lugarEntrega: str
+  descripciónEntrega: str
+  direccionEntrega: str
+  destinoFinal: str
+  estatus: str
+  fechaEntrega: datetime64[ns]  # dd/mm/yyyy
+  cantidadSolicitada: str
+  precio: str
+  importeSinIva: str
+
+columns_IMSS_altas:
+  - noAlta
+  - fechaAltaTrunc
+  - noContrato
+  - noOrden
+  - clave
+  - cantRecibida
+  - importe
+  - fpp
+  - clasPtalRecep
+  - descUnidad
+  - clasPtalDist
+  - descDist
+  - totalItems
+  - resguardo
+
+columns_IMSS_orders:
+  - contrato
+  - solicitud
+  - orden
+  - generacion
+  - cveArticulo
+  - fechaExpedicion
+  - lugarEntrega
+  - descripciónEntrega
+  - direccionEntrega
+  - destinoFinal
+  - estatus
+  - fechaEntrega
+  - cantidadSolicitada
+  - precio
+  - importeSinIva
+
+columns_PREI: 
+  - Documento
+  - Folio Fiscal
+  - Fecha Factura
+  - Importe
+  - Fecha Carga
+  - Unidad Negocio
+  - Contra Recibo
+  - Estado C.R.

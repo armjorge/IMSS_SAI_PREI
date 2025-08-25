@@ -20,6 +20,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 import datetime
 import glob
+import platform
+import openpyxl
+
 class PREI_MANAGEMENT:
     def __init__(self, working_folder, web_driver_manager, data_access):
         self.working_folder = working_folder
@@ -30,11 +33,10 @@ class PREI_MANAGEMENT:
         create_directory_if_not_exists(PREI_path)
         username = self.data_access['PREI_user']
         password = self.data_access['PREI_password']
-        excel_path = os.path.join(PREI_path, "2025_dates.xlsx")
-        temporal_PREI_path = os.path.join(PREI_path, "Temporal downloads")
-        create_directory_if_not_exists(temporal_PREI_path)
-        driver = self.web_driver_manager.create_driver(temporal_PREI_path)
-        exito_prei = self.PREI_downloader(driver, username, password, temporal_PREI_path, excel_path)
+        sub_path = os.path.abspath(os.path.join(PREI_path, ".."))
+        excel_path = os.path.join(sub_path, "2025_dates.xlsx")
+        driver = self.web_driver_manager.create_driver(PREI_path)
+        exito_prei = self.PREI_downloader(driver, username, password, PREI_path, excel_path)
         return exito_prei
 
     def convert_date_format(self, date):
@@ -188,48 +190,63 @@ class PREI_MANAGEMENT:
             finally:
                 print("Moving to the next set.")
                 driver.execute_script("window.scrollTo(0, 0);")
-
-    def clean_download_directory(self, download_directory, username):
+    def clean_download_directory(self, download_directory):
         """
-        Cleans the download_directory by removing .xls files that are either:
-        - Not created today, or
-        - Not loadable as a non-empty DataFrame.
-        Returns a set of valid file names (basename) present in the directory.
+        Removes .xls files not created today by checking file system metadata.
+        Returns a set of remaining file names (basename).
         """
         valid_files = set()
         today = datetime.date.today()
-        # List all .xls files in the directory
+        
+        # Only look for .xls files (as you mentioned these are the expected files)
         xls_files = glob.glob(os.path.join(download_directory, "*.xls"))
         
-        for file_path in xls_files:
+        # Also remove any .xlsx files (these shouldn't be here)
+        xlsx_files = glob.glob(os.path.join(download_directory, "*.xlsx"))
+        for xlsx_file in xlsx_files:
+            print(f"🗑️ Removing unexpected .xlsx file: {os.path.basename(xlsx_file)}")
             try:
-                # Get file creation time as date
-                file_creation_date = datetime.date.fromtimestamp(os.path.getctime(file_path))
+                os.remove(xlsx_file)
             except Exception as e:
-                print(f"Error getting creation time for {os.path.basename(file_path)}: {e}")
-                continue
-            
-            if file_creation_date != today:
-                print(f"remove {os.path.basename(file_path)} (not from today)")
-                os.remove(file_path)
-                continue
-            
-            # Check if file is valid (loadable and non-empty)
-            try:
-                df_file = pd.read_excel(file_path)
-                if df_file.empty:
-                    print(f"remove {os.path.basename(file_path)} (empty file)")
-                    os.remove(file_path)
-                    continue
-            except Exception as e:
-                print(f"remove {os.path.basename(file_path)} (not loadable: {e})")
-                os.remove(file_path)
-                continue
-            
-            # File passed the checks: add its basename to the set
-            valid_files.add(os.path.basename(file_path))
+                print(f"   ❌ Error removing .xlsx file: {e}")
         
+        print(f"🔍 Found {len(xls_files)} .xls files to check")
+
+        for file_path in xls_files:
+            file_name = os.path.basename(file_path)
+            should_keep = False
+            
+            try:
+                # Método: Usar solo fecha de modificación del sistema de archivos
+                file_stats = os.stat(file_path)
+                mod_timestamp = file_stats.st_mtime
+                mod_date = datetime.date.fromtimestamp(mod_timestamp)
+                
+                print(f"📅 {file_name} - File Modified: {mod_date} (Today: {today})")
+                
+                # Solo mantener archivos modificados HOY
+                should_keep = (mod_date == today)
+                
+                # Decision: keep or remove
+                if should_keep:
+                    valid_files.add(file_name)
+                    print(f"✅ Keeping: {file_name}")
+                else:
+                    print(f"🗑️ Removing {file_name} (modified: {mod_date}, not today)")
+                    os.remove(file_path)
+                    
+            except Exception as e:
+                print(f"❌ Error processing {file_name}: {e}")
+                # If we can't determine the date, remove it to be safe
+                try:
+                    os.remove(file_path)
+                    print(f"🗑️ Removed {file_name} (couldn't determine date)")
+                except:
+                    pass
+        
+        print(f"📊 Remaining .xls files: {len(valid_files)}")
         return valid_files
+    
 
     def check_missing_files(self, df, username, download_directory):
         """
@@ -237,16 +254,36 @@ class PREI_MANAGEMENT:
         Prior to checking, cleans the download directory by removing invalid files.
         Returns a DataFrame with the rows corresponding to missing files.
         """
-        valid_files = self.clean_download_directory(download_directory, username)
+        valid_files = self.clean_download_directory(download_directory)
         missing_rows = []
-        
+        expected_files = []
         for index, row in df.iterrows():
             date_start = self.convert_date_format(row['DATE START'])
             date_end = self.convert_date_format(row['DATE END'])
             file_name = f'[FacturaVsCR][{username}][{date_start}][{date_end}].xls'
+            expected_files.append(file_name)
             # Only add row if the expected file is not among the valid files
             if file_name not in valid_files:
                 missing_rows.append(row)
+        # 🗑️ Remove files that are valid but not expected
+        files_to_remove = set(valid_files) - set(expected_files)
+        
+        if files_to_remove:
+            print(f"🗑️ Eliminando {len(files_to_remove)} archivos no esperados:")
+            for file_to_remove in files_to_remove:
+                file_path = os.path.join(download_directory, file_to_remove)
+                try:
+                    os.remove(file_path)
+                    print(f"   ✅ Eliminado: {file_to_remove}")
+                except Exception as e:
+                    print(f"   ❌ Error eliminando {file_to_remove}: {e}")
+        else:
+            print("✅ No hay archivos no esperados para eliminar")
+        
+        # 📊 Report final status
+        remaining_expected = set(expected_files) & set(valid_files)
+        print(f"📊 Archivos esperados restantes: {len(remaining_expected)}")
+        print(f"📊 Archivos faltantes: {len(missing_rows)}")
         
         return pd.DataFrame(missing_rows)
 
@@ -258,28 +295,39 @@ class PREI_MANAGEMENT:
         1. Read the Excel file to get date ranges.
         2. Clean the download directory and check which files are missing/invalid.
         3. Download files for the missing date ranges.
+        4. Re-check to confirm all files are now present.
         """
-        """
-        df = pd.read_excel(excel_file)
-        # Remove invalid or outdated files and get missing date ranges
-        df_missing = check_missing_files(df, username, download_directory)
-        if df_missing.empty:
-            print("All files are present and valid.")
-        else:
-            #print("Missing or invalid files for the following date ranges:")
-            #print(df_missing.head(20))
-            for index, row in df_missing.iterrows():
-                print(f"{convert_date_format(row['DATE START'])} to {convert_date_format(row['DATE END'])}")
-            # Attempt to download the missing files
-            download_files(driver, df_missing, username, password)
-        """
-        df = pd.read_excel(excel_file)
-        df_missing = self.check_missing_files(df, username, download_directory)
+        # Limpiar datos del Excel (eliminar filas vacías/nulas)
+        df_fecha = pd.read_excel(excel_file)
+        df_fecha = df_fecha.dropna(subset=['DATE START', 'DATE END'])  # ✅ Eliminar filas con fechas vacías
+        
+        print(f"📅 Procesando {len(df_fecha)} rangos de fechas")
+        
+        # Primera verificación
+        df_missing = self.check_missing_files(df_fecha, username, download_directory)
+        
         if df_missing.empty:
             print("✅ All files are present and valid.")
+            driver.quit()  # Cerrar driver si no hay nada que hacer
             return True
         else:
+            print(f"📥 Descargando {len(df_missing)} archivos faltantes:")
             for index, row in df_missing.iterrows():
                 print(f"⬇️ Downloading: {self.convert_date_format(row['DATE START'])} to {self.convert_date_format(row['DATE END'])}")
+            
+            # Descargar archivos faltantes
             self.download_files(driver, df_missing, username, password)
-            return False
+            
+            # ✅ VERIFICACIÓN FINAL - Re-check después de descargar
+            print("\n🔍 Verificando si todas las descargas se completaron...")
+            df_still_missing = self.check_missing_files(df_fecha, username, download_directory)
+            
+            if df_still_missing.empty:
+                print("✅ Todas las descargas se completaron exitosamente")
+                driver.quit()
+                return True
+            else:
+                print(f"⚠️ Aún faltan {len(df_still_missing)} archivos por descargar")
+                print("🔄 Puedes ejecutar nuevamente para completar las descargas pendientes")
+                driver.quit()
+                return False
