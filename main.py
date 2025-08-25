@@ -56,6 +56,7 @@ class MiniImssApp:
             if choice == "1":
                 altas_path = os.path.join(self.working_folder, "SAI")
                 temporal_altas_path = os.path.join(altas_path, "Temporal downloads")
+                create_directory_if_not_exists(temporal_altas_path)
                 self.downloaded_files_manager.manage_downloaded_files(temporal_altas_path)
                 exito_descarga_altas = self.sai_manager.descargar_altas(temporal_altas_path)
                 if exito_descarga_altas:
@@ -66,6 +67,7 @@ class MiniImssApp:
             elif choice == "2":
                 PREI_path = os.path.join(self.working_folder, "PREI")
                 temporal_prei_path = os.path.join(PREI_path, 'Temporal downloads')
+                create_directory_if_not_exists(temporal_prei_path)
                 self.downloaded_files_manager.manage_downloaded_files(temporal_prei_path)
                 exito_descarga_prei = self.prei_manager.descargar_PREI(temporal_prei_path)
                 if exito_descarga_prei:
@@ -73,8 +75,6 @@ class MiniImssApp:
                     self.downloaded_files_manager.manage_downloaded_files(temporal_prei_path)
                 else:
                     print("⚠️ Descarga de PREI completada con archivos pendientes")
-                
-
             elif choice == "3":
                 print("📄 Cargando facturas...")
                 self.facturas_manager.cargar_facturas()

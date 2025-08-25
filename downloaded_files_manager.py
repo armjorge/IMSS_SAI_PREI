@@ -25,13 +25,15 @@ class DownloadedFilesManager:
         altas_path = os.path.join(sub_path, f"{preffix} Altas_files")
         columns_orders = self.data_access['columns_IMSS_orders']
         orders_path = os.path.join(sub_path, f"{preffix} Orders_files")
-        prei_output_path = os.path.join(sub_path, f"{preffix} PREI_files")
+        prei_output_path = os.path.join(sub_path, f"{preffix}_files")
 
 
         altas_files = []
         altas_dates = []
         orders_files = []
-        orders_dates = []        
+        orders_dates = []
+        prei_files = []
+        prei_dates = []        
         if len(xlsx_list) > 0:
             for file in xlsx_list:
                 file_path = os.path.join(path_input, file)  # Este es el path completo del archivo
@@ -50,8 +52,7 @@ class DownloadedFilesManager:
             print("❌ No se encontraron archivos .xlsx en la carpeta de descargas temporales.")
         
         xls_list = [f for f in os.listdir(path_input) if f.endswith(".xls")]
-        prei_files = []
-        prei_dates = []
+
         if len(xls_list) > 0:
             for file in xls_list:
                 file_path = os.path.join(path_input, file)
@@ -65,7 +66,82 @@ class DownloadedFilesManager:
             print("❌ No se encontraron archivos .xls en la carpeta de descargas temporales.")
         print(prei_files)
         print(prei_dates)
-        
+        if altas_files:
+            create_directory_if_not_exists(altas_path)
+            for index, alta_file in enumerate(altas_files):
+                # Crear nuevo nombre de archivo
+                new_filename = f"{altas_dates[index]}-{preffix} Altas.xlsx"
+                destination_path = os.path.join(altas_path, new_filename)
+                
+                try:
+                    # Mover archivo al destino con nuevo nombre
+                    import shutil
+                    shutil.move(alta_file, destination_path)
+                    print(f"✅ Movido: {os.path.basename(alta_file)} → {new_filename}")
+                except Exception as e:
+                    print(f"❌ Error moviendo {os.path.basename(alta_file)}: {e}")
+
+        if orders_files:
+            create_directory_if_not_exists(orders_path)
+            for index, order_file in enumerate(orders_files):
+                # Crear nuevo nombre de archivo
+                new_filename = f"{orders_dates[index]}-{preffix} Orders.xlsx"
+                destination_path = os.path.join(orders_path, new_filename)
+                
+                try:
+                    # Mover archivo al destino con nuevo nombre
+                    import shutil
+                    shutil.move(order_file, destination_path)
+                    print(f"✅ Movido: {os.path.basename(order_file)} → {new_filename}")
+                except Exception as e:
+                    print(f"❌ Error moviendo {os.path.basename(order_file)}: {e}")
+
+        if prei_files:
+            create_directory_if_not_exists(prei_output_path)
+            df_prei = pd.DataFrame()
+            
+            for index, file_path in enumerate(prei_files):
+                df_file = self.XLS_header_location(file_path)
+                if df_file is not None and not df_file.empty:
+                    # Concatenar DataFrames
+                    df_prei = pd.concat([df_prei, df_file], ignore_index=True)
+                    print(f"📊 Archivo {os.path.basename(file_path)} agregado al DataFrame combinado")
+                else:
+                    print(f"⚠️ Archivo {os.path.basename(file_path)} omitido (vacío o sin headers válidos)")
+            
+            if not df_prei.empty:
+                # Obtener valores únicos de fechas para el nombre del archivo
+                unique_dates = list(set(prei_dates))  # Eliminar duplicados
+                unique_dates.sort()  # Ordenar fechas
+                
+                # Crear nombre de archivo con fechas únicas
+                if len(unique_dates) == 1:
+                    date_str = unique_dates[0]
+                else:
+                    date_str = f"{unique_dates[0]}_to_{unique_dates[-1]}"
+                
+                filename = f"{date_str}-{preffix}.xlsx"
+                output_file_path = os.path.join(prei_output_path, filename)
+                
+                try:
+                    # Guardar DataFrame combinado
+                    df_prei.to_excel(output_file_path, index=False)
+                    print(f"✅ Archivo PREI combinado guardado: {filename}")
+                    print(f"📊 Total de filas: {len(df_prei)}")
+                    
+                    # Eliminar archivos originales después de combinar
+                    for file_path in prei_files:
+                        try:
+                            os.remove(file_path)
+                            print(f"🗑️ Archivo original eliminado: {os.path.basename(file_path)}")
+                        except Exception as e:
+                            print(f"❌ Error eliminando {os.path.basename(file_path)}: {e}")
+                            
+                except Exception as e:
+                    print(f"❌ Error guardando archivo PREI combinado: {e}")
+            else:
+                print("⚠️ No se encontraron datos válidos en los archivos PREI")
+                
 
     def get_file_creation_date(self, file_path):
         """
@@ -99,7 +175,7 @@ class DownloadedFilesManager:
         Formatea la fecha para usar en nombres de archivo
         Returns: string en formato YYYY-MM-DD_HHMMSS
         """
-        return date_obj.strftime("%Y-%m-%d_%H%M%S")
+        return date_obj.strftime("%Y-%m-%d-%H")
     def XLS_header_location(self, filepath):
         """
         Busca en las primeras 10 filas del archivo XLS para encontrar los headers correctos
