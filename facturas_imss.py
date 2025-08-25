@@ -9,7 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import TimeoutException
-from helpers import create_directory_if_not_exists
+from helpers import create_directory_if_not_exists, message_print
 import numpy as np
 
 class FACTURAS_IMSS:
@@ -18,28 +18,97 @@ class FACTURAS_IMSS:
         self.data_access = data_access
         
     def cargar_facturas(self):
-        invoice_paths = [
-            r'C:\Users\arman\Dropbox\FACT 2025'
-        ]        
         facturas_folder = os.path.join(self.working_folder, "Facturas")
-        create_directory_if_not_exists(facturas_folder)
         xlsx_database = os.path.join(facturas_folder, 'xmls_extraidos.xlsx')
-        folder_root = r"C:\Users\arman\Dropbox\3. Armando Cuaxospa\Adjudicaciones\Licitaciones 2025\E115 360"
-        dict_path_sheet = {'C:\\Users\\arman\\Dropbox\\FACT 2025\\Copy of Generacion facturas IMSS 2024.xlsx': 'Reporte Paq'} 
-        dic_columnas = {'IMSS_2025': ['Folio', 'Referencia', 'Alta', 'Total', 'UUID']} 
-        #paq_folder = r"C:\Users\arman\Dropbox\3. Armando Cuaxospa\Adjudicaciones\Licitaciones 2025\E115 360\Implementación\Facturas\IMSS"
-        altas_path = r"C:\Users\arman\Dropbox\3. Armando Cuaxospa\Reportes GPT 2025\mini_imss\Implementación\SAI\Temporal downloads\altas_export_1755827409624.xlsx"
-        info_types = 'IMSS'
-        altas_sheet = 'df_altas'
+        self.smart_xml_extraction(xlsx_database)   
+        
+        preffix = os.path.basename(facturas_folder)
+        create_directory_if_not_exists(facturas_folder)
+        
+        
+        # ✅ Usar carpeta local en lugar de Dropbox
+        consultas_folder = os.path.join(facturas_folder, "Consultas")
+        create_directory_if_not_exists(consultas_folder)
+
+        # DataFrame general vacío
+        df_general = pd.DataFrame()
+
+        # Iterar sobre los paquetes en PAQS_IMSS
+        for paq_name, paq_info in self.data_access.get("PAQS_IMSS", {}).items():
+            file_path = paq_info.get("file_path")
+            sheet = paq_info.get("sheet")
+            rows = paq_info.get("rows", [])
+
+            print(f"\n🔍 Procesando {paq_name}")
+
+            # 1. Intentar cargar archivo
+            if not os.path.exists(file_path):
+                print(f"⚠️ Archivo no encontrado: {file_path}")
+                continue
+            print(f"✅ Archivo encontrado: {file_path}")
+
+            try:
+                # 2. Intentar cargar hoja con columnas definidas
+                df = pd.read_excel(file_path, sheet_name=sheet, usecols=rows)
+                print(f"✅ Hoja '{sheet}' cargada con columnas {rows}")
+
+                # Concatenar a df_general
+                df_general = pd.concat([df_general, df], ignore_index=True)
+
+            except ValueError as e:
+                print(f"⚠️ Problema con la hoja o columnas: {e}")
+                continue
+
+        # Guardar resultado en carpeta local
+        if not df_general.empty:
+            today = datetime.datetime.today().strftime("%Y-%m-%d-%H")  # ✅ Formato de fecha corregido
+            output_file = os.path.join(consultas_folder, f"{today}_PAQ_IMSS.xlsx")  # ✅ Usar carpeta local
+            df_xmls = pd.read_excel(xlsx_database)
+            print(f"📊 Filas en df_xmls antes de limpiar: {df_xmls.shape[0]}")
+
+            # Verificar duplicados por Folio
+            duplicados = df_xmls['Folio'].duplicated().sum()
+            if duplicados > 0:
+                print(f"⚠️ Se encontraron {duplicados} folios duplicados en df_xmls")
+                
+                # Opción A: Eliminar duplicados manteniendo el primero
+                df_xmls = df_xmls.drop_duplicates(subset=['Folio'], keep='first')
+                print(f"✅ Duplicados eliminados. Filas restantes: {df_xmls.shape[0]}")
+            print(f"Filas antes de la fusión con el XML {df_general.shape[0]}")
+            df_general = pd.merge(df_general, df_xmls, how='left', left_on='Folio', right_on='Folio')
+            print(f"print filas después de la fusión con el XML {df_general.shape[0]}")
+            print("\n✅ DataFrame fusionado con información XL con éxito.")
+            try:
+                df_general.to_excel(output_file, index=False)
+                print(f"\n💾 Archivo guardado en {output_file}")
+                print(f"📊 Total de filas procesadas: {len(df_general)}")
+            except PermissionError as e:
+                print(f"❌ Error de permisos: {e}")
+                print(f"🔄 Intentando guardar en carpeta alternativa...")
+                
+                # Fallback: guardar en carpeta temporal
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                fallback_file = os.path.join(temp_dir, f"{today}_facturas.xlsx")
+                df_general.to_excel(fallback_file, index=False)
+                print(f"💾 Archivo guardado en ubicación temporal: {fallback_file}")
+                
+        else:
+            print("\n⚠️ No se generó DataFrame, revisar configuración.")        
+
         
 
-        
-        self.smart_xml_extraction(invoice_paths, xlsx_database)
-        self.validacion_de_paqs(dict_path_sheet, dic_columnas, facturas_folder, altas_path, altas_sheet, info_types, xlsx_database)
+        #self.validacion_de_paqs(dict_path_sheet, dic_columnas, facturas_folder, altas_path, altas_sheet, info_types, xlsx_database)
 
 
-    def smart_xml_extraction(self, invoice_paths, xlsx_database):
+    def smart_xml_extraction(self, xlsx_database):
         # Si la base existe, la cargamos; si no, creamos el DataFrame con todas las columnas, incluida la nueva 'Fecha'
+        print(message_print("Extrayendo la información de los XMLs..."))
+        invoice_paths = []
+        for path in self.data_access['facturas_path']:
+            if os.path.exists(path):
+                invoice_paths.append(path)
+
         if os.path.exists(xlsx_database):
             df_database = pd.read_excel(xlsx_database)
         else:

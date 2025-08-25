@@ -6,50 +6,14 @@ PREI_password: 'EPH161215NS9'
 PREI_user: '0000150462'
 PREI_link: "https://pispdigital.imss.gob.mx/piref/"
 
-CAMUNDA_password: "N29f6Mwif"
-CAMUNDA_user: "ArmandoJimenez"
-CAMUNDA_link: 
-
-SAGI_password: "Pharmas21"
-SAGI_user: "EPH161215NS9"
-SAGI_link: 
-
-PAQ_IMSS_2025_Dropbox: 'C:\Users\arman\Dropbox\FACT 2025\Copy of Generacion facturas IMSS 2024.xlsx'
-PAQ_IMSS_2025_Excel_sheet: 'Reporte Paq'
-
-columns_INSABI:
-  ITEM: int
-  RFC: str
-  RAZÓN SOCIAL: str
-  ALMACÉN ENTREGA: str
-  DIRECCIÓN ALMACÉN: str
-  INSTITUCIÓN REQUIRENTE: str
-  NÚMERO DE ORDEN DE SUMINISTRO: str
-  FECHA EXPEDICIÓN DE LA ORDEN: datetime64[ns]  # dd/mm/yyyy
-  FECHA LÍMITE DE ENTREGA DE LA ORDEN: datetime64[ns]  # dd/mm/yyyy
-  CLAVE INSUMO: str
-  DESCRIPCIÓN: str
-  CLUES: str
-  ENTIDAD DESTINO FINAL: str
-  CANTIDAD SOLICITADA: int
-  ESTATUS: str
-
-columns_IMSS_orders:
-  contrato: str
-  solicitud: str
-  orden: str
-  generacion: str
-  cveArticulo: str
-  fechaExpedicion: datetime64[ns]  # dd/mm/yyyy
-  lugarEntrega: str
-  descripciónEntrega: str
-  direccionEntrega: str
-  destinoFinal: str
-  estatus: str
-  fechaEntrega: datetime64[ns]  # dd/mm/yyyy
-  cantidadSolicitada: str
-  precio: str
-  importeSinIva: str
+PAQS_IMSS:
+  PAQ_IMSS_2025:
+    file_path: "C:\\Users\\arman\\Dropbox\\FACT 2025\\Copy of Generacion facturas IMSS 2024.xlsx"
+    sheet: "Reporte Paq"
+    rows:
+      - Folio
+      - Referencia
+      - Alta
 
 columns_IMSS_altas:
   - noAlta
@@ -93,3 +57,8 @@ columns_PREI:
   - Unidad Negocio
   - Contra Recibo
   - Estado C.R.
+
+facturas_path:
+  - "C:\\Users\\arman\\Dropbox\\FACT 2023"
+  - "C:\\Users\\arman\\Dropbox\\FACT 2024"
+  - "C:\\Users\\arman\\Dropbox\\FACT 2025"
