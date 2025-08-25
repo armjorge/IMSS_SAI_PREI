@@ -6,6 +6,7 @@ from SAI import SAI_MANAGEMENT
 from PREI import PREI_MANAGEMENT
 from facturas_imss import FACTURAS_IMSS
 from downloaded_files_manager import DownloadedFilesManager
+from data_integration import DataIntegration
 
 class MiniImssApp:
     def __init__(self):
@@ -14,6 +15,7 @@ class MiniImssApp:
         self.config_manager = ConfigManager(self.working_folder)
         self.web_driver = None
         self.data_access = None 
+        
 
     def initialize(self):
         """Inicializa los managers principales"""
@@ -34,6 +36,7 @@ class MiniImssApp:
         self.prei_manager = PREI_MANAGEMENT(self.working_folder, self.web_driver_manager, self.data_access)
         self.facturas_manager = FACTURAS_IMSS(self.working_folder, self.data_access)
         self.downloaded_files_manager = DownloadedFilesManager(self.working_folder, self.data_access)
+        self.data_integration = DataIntegration(self.working_folder, self.data_access)
         print("✅ Inicialización completada")
         return True
 
@@ -81,7 +84,12 @@ class MiniImssApp:
                 print("✅ Carga de facturas completada")
             elif choice == "4":
                 print("🔄 Integrando información...")
-                # Aquí implementarás la lógica de integración
+                PREI_processed_path = os.path.join(self.working_folder, "PREI", "PREI_files")
+                ALTAS_processed_path = os.path.join(self.working_folder, "SAI", "SAI Altas_files")
+                #ORDERS_processed_path = os.path.join(self.working_folder, "SAI", "Orders_Procesados")
+                FACTURAS_processed_path = os.path.join(self.working_folder, "Facturas", "Consultas")
+                self.data_integration.integrar_datos(PREI_processed_path, ALTAS_processed_path, FACTURAS_processed_path)
+
                 print("✅ Integración completada")
             elif choice == "0":
                 print("👋 ¡Hasta luego!")
