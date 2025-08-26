@@ -81,7 +81,9 @@ class FACTURAS_IMSS:
             try:
                 df_general.to_excel(output_file, index=False)
                 print(f"\n💾 Archivo guardado en {output_file}")
+                success = True 
                 print(f"📊 Total de filas procesadas: {len(df_general)}")
+                return success
             except PermissionError as e:
                 print(f"❌ Error de permisos: {e}")
                 print(f"🔄 Intentando guardar en carpeta alternativa...")
@@ -92,6 +94,8 @@ class FACTURAS_IMSS:
                 fallback_file = os.path.join(temp_dir, f"{today}_facturas.xlsx")
                 df_general.to_excel(fallback_file, index=False)
                 print(f"💾 Archivo guardado en ubicación temporal: {fallback_file}")
+
+                return False
                 
         else:
             print("\n⚠️ No se generó DataFrame, revisar configuración.")        

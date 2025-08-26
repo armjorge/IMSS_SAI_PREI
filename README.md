@@ -1,4 +1,4 @@
-# mini_imss
+# IMSS SAI y PREI integrado a facturación. 
 
 Sistema para descargar las altas y su estatus del IMSS.
 ## Descripción

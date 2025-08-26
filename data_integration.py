@@ -6,10 +6,10 @@ from helpers import message_print, create_directory_if_not_exists
 
 
 class DataIntegration:
-    def __init__(self, working_folder, data_access):
+    def __init__(self, working_folder, data_access, integration_path):
         self.working_folder = working_folder
-        self.data_access = data_access  # ✅ Agregué esta línea que faltaba
-        
+        self.data_access = data_access  
+        self.integration_path = integration_path 
     def integrar_datos(self, prei_path, altas_path, facturas_path):
         print(f"🔍 Buscando archivos más recientes...")
         
@@ -54,8 +54,8 @@ class DataIntegration:
 
         # Crear carpeta de integración
         
-        integration_path = os.path.join(self.working_folder, "Integración")
-        create_directory_if_not_exists(integration_path)
+        
+        create_directory_if_not_exists(self.integration_path)
 
         # Encontrar la fecha más antigua
         fechas_disponibles = []
@@ -238,4 +238,11 @@ class DataIntegration:
         else:
             print(f"❌ No se pudo determinar el archivo más reciente en {os.path.basename(path)}")
             return None, None
-        
+
+    def run_queries(self, queries_folder, schema, table_name):
+        """Ejecuta las consultas SQL en el folder especificado."""
+        print(f"🔄 Ejecutando consultas en {queries_folder}...")
+        for query_file in glob.glob(os.path.join(queries_folder, "*.sql")):
+            with open(query_file, "r") as f:
+                query = f.read()
+                self.execute_query(query, schema, table_name)
