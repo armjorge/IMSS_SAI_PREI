@@ -122,7 +122,7 @@ class MiniImssApp:
                 print("🔄 Actualizando información en SQL...")
                 
                 # Use get_newest_file method to find the integration file
-                integration_file = os.path.join(self.integration_path, "2025-08-25 Integracion.xlsx")
+                integration_file = os.path.join(self.integration_path, "2025-08-25-18_Integracion.xlsx")
                 if integration_file is None:
                     print("❌ No integration file found")
                     continue

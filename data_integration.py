@@ -68,10 +68,10 @@ class DataIntegration:
 
         if fechas_disponibles:
             oldest_date = min(fechas_disponibles)
-            oldest_date_str = oldest_date.strftime("%Y-%m-%d")
+            oldest_date_str = oldest_date.strftime("%Y-%m-%d-%H")
             
             # Crear nombre del archivo
-            xlsx_path = os.path.join(integration_path, f"{oldest_date_str} Integracion.xlsx")
+            xlsx_path = os.path.join(self.integration_path, f"{oldest_date_str}_Integracion.xlsx")
             
             try:
                 # Guardar múltiples hojas en un archivo Excel
