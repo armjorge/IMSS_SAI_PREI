@@ -109,13 +109,13 @@ class SQL_CONNEXION_UPDATING:
                                         print("-" * 80)
                                         
                                         # Display first 3 rows with better formatting
-                                        for i, row in enumerate(rows[:3]):
+                                        for i, row in enumerate(rows[:20]):
                                             row_dict = dict(zip(columns, row))
                                             for col, value in row_dict.items():
                                                 print(f"  {col}: {value}")
                                             print("-" * 40)
                                             
-                                        if len(rows) > 3:
+                                        if len(rows) > 20:
                                             print(f"... and {len(rows) - 3} more rows")
                                     else:
                                         print("✅ Query executed successfully - No rows returned")
