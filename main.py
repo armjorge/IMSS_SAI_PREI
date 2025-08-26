@@ -122,7 +122,8 @@ class MiniImssApp:
                 print("🔄 Actualizando información en SQL...")
                 
                 # Use get_newest_file method to find the integration file
-                integration_file = os.path.join(self.integration_path, "2025-08-25-18_Integracion.xlsx")
+                integration_file, date_integration_file= self.data_integration.get_newest_file(self.integration_path)
+                print(f"📁 Using integration file: {os.path.basename(integration_file)} del día {date_integration_file}")
                 if integration_file is None:
                     print("❌ No integration file found")
                     continue
@@ -152,6 +153,9 @@ class MiniImssApp:
                     print(f"⚠️ Queries folder not found: {queries_folder}")
                 else:
                     self.sql_integration.run_queries(queries_folder, schema, table_name)
+            elif choice == "0":
+                print("Saliendo de la aplicación...")
+                break
 if __name__ == "__main__":
     app = MiniImssApp()
     app.run()
