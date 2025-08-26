@@ -3,6 +3,8 @@ import os
 def message_print(message):
     """Formatea mensajes con asteriscos para destacarlos"""
     message_highlights = '*' * len(message)
+    if len(message_highlights) > 50:
+        message_highlights = '*' * 50
     return f'\n{message_highlights}\n{message}\n{message_highlights}\n'
 
 def create_directory_if_not_exists(path_or_paths):

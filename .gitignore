@@ -222,3 +222,4 @@ marimo/_lsp/
 __marimo__/
 # Implementación
 Implementación/
+__pycache__/

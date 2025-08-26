@@ -102,21 +102,11 @@ class SQL_CONNEXION_UPDATING:
                                     rows = result.fetchall()
                                     columns = list(result.keys())
                                     
-                                    print(f"✅ Query returned {len(rows)} rows:")
-                                    print(f"📊 Columns: {columns}")
+                                    print(f"✅ Query returned {len(rows)} rows")
+                                    print("=" * 60)
                                     
                                     if rows:
-                                        print("-" * 80)
-                                        
-                                        # Display first 3 rows with better formatting
-                                        for i, row in enumerate(rows[:20]):
-                                            row_dict = dict(zip(columns, row))
-                                            for col, value in row_dict.items():
-                                                print(f"  {col}: {value}")
-                                            print("-" * 40)
-                                            
-                                        if len(rows) > 20:
-                                            print(f"... and {len(rows) - 3} more rows")
+                                        self._display_grouped_results(rows, columns)
                                     else:
                                         print("✅ Query executed successfully - No rows returned")
                                         
@@ -142,3 +132,71 @@ class SQL_CONNEXION_UPDATING:
         finally:
             if connexion:
                 connexion.dispose()
+
+    def _display_grouped_results(self, rows, columns):
+        """
+        Display query results in a grouped, hierarchical format for better readability.
+        Detects common grouping patterns and formats them appropriately.
+        """
+        current_group = None
+        
+        for row in rows:
+            row_dict = dict(zip(columns, row))
+            
+            # Detect if this is a grouped result (common patterns)
+            is_subtotal = any('subtotal' in str(value).lower() for value in row_dict.values())
+            is_grand_total = any('grand total' in str(value).lower() for value in row_dict.values())
+            
+            # Get the first column as potential group identifier
+            first_col = columns[0]
+            group_value = row_dict[first_col]
+            
+            if is_grand_total:
+                # Grand total - show at the end with emphasis
+                print("\n" + "="*40)
+                for col, value in row_dict.items():
+                    if value and str(value).strip() and 'grand total' not in str(value).lower():
+                        print(f"🏆 TOTAL GENERAL: {value}")
+                print("="*40)
+                
+            elif is_subtotal:
+                # Subtotal - show with indentation
+                for col, value in row_dict.items():
+                    if 'subtotal' in str(value).lower():
+                        continue
+                    if value and str(value).strip() and col != first_col:
+                        print(f"   📊 Subtotal: {value}")
+                print()  # Add spacing after subtotal
+                
+            else:
+                # Find the detail field (estado, unidad_operativa, etc.) and the amount
+                detail_field = None
+                amount_field = None
+                
+                for col, value in row_dict.items():
+                    if col != first_col and value and str(value).strip():
+                        # Look for detail fields (estado, unidad_operativa)
+                        if col.lower() in ['estado', 'unidad_operativa'] and not any(keyword in str(value).lower() for keyword in ['subtotal', 'grand total']):
+                            detail_field = str(value).strip()  # Trim whitespace
+                        # Look for amount fields
+                        elif ('importe' in col.lower() or 'total' in col.lower()) and '$' in str(value):
+                            amount_field = value
+                
+                # Check if this is a simple case (no detail field, just group and amount)
+                if not detail_field and amount_field:
+                    # Simple case: show group and amount on same line
+                    print(f"📅 {group_value.upper()}: {amount_field}")
+                else:
+                    # Complex case: show hierarchical format
+                    # Check if we're starting a new group
+                    if group_value != current_group and not str(group_value).strip().startswith(' '):
+                        current_group = group_value
+                        print(f"\n📅 {group_value.upper()}")
+                    
+                    # Display the detail line
+                    if detail_field and amount_field:
+                        print(f"   • {detail_field}: {amount_field}")
+                    elif detail_field:
+                        print(f"   • {detail_field}")
+                    elif amount_field:
+                        print(f"   • {amount_field}")

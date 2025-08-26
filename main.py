@@ -133,7 +133,6 @@ class MiniImssApp:
                     df_to_upload = pd.read_excel(integration_file, sheet_name='df_altas')
                     df_to_upload[['fechaAltaTrunc', 'fpp']] = df_to_upload[['fechaAltaTrunc', 'fpp']].apply(pd.to_datetime, errors='coerce', format='%d/%m/%Y')
                     df_to_upload = self.sql_integration.sql_column_correction(df_to_upload)
-                    
                     schema = 'eseotres'
                     table_name = 'df_altas'               
                     self.sql_integration.update_sql(df_to_upload, schema, table_name)
