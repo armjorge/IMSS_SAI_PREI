@@ -1,0 +1,27 @@
+import os
+from config import ConfigManager
+
+from sql_connexion_updating import SQL_CONNEXION_UPDATING
+
+class DataWarehouse:
+    def __init__(self, data_access):
+        self.data_access = data_access
+
+    def Business_Intelligence(self):
+        #Conectar a database SOURCE
+        print("Conectando a la base de datos SOURCE...")
+        #print(self.data_access)
+        sql_url = self.data_access.get_sql_url('sql_url')
+        target_url = self.data_access.get_sql_url('sql_target')
+        print(target_url)
+        print(sql_url)
+        print("Inteligencia de negocios")
+
+
+if __name__ == "__main__":
+    folder_root = os.getcwd()
+    working_folder = os.path.join(folder_root, "Implementación")
+    config_manager = ConfigManager(working_folder)
+    data_access = config_manager.yaml_creation(working_folder)
+    data_warehouse = DataWarehouse(data_access)
+    data_warehouse.Business_Intelligence()

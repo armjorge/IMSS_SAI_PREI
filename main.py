@@ -9,6 +9,8 @@ from downloaded_files_manager import DownloadedFilesManager
 from data_integration import DataIntegration
 from sql_connexion_updating import SQL_CONNEXION_UPDATING
 import pandas as pd
+import glob 
+from data_warehouse import DataWarehouse
 
 class MiniImssApp:
     def __init__(self):
@@ -41,9 +43,62 @@ class MiniImssApp:
         self.downloaded_files_manager = DownloadedFilesManager(self.working_folder, self.data_access)
         self.data_integration = DataIntegration(self.working_folder, self.data_access, self.integration_path)
         self.sql_integration = SQL_CONNEXION_UPDATING(self.working_folder, self.data_access)
+        self.data_warehouse = DataWarehouse(self.data_access, self.working_folder)
         print("✅ Inicialización completada")
         return True
+    def altas_historicas(self):
+        print("🔄 Actualizando información en SQL: longitudinal en el tiempo")
 
+        # Buscar archivos .xlsx en la carpeta de integración
+        integration_files = glob.glob(os.path.join(self.integration_path, "*.xlsx"))
+
+        # Columnas esperadas: base + integración (sin duplicados, preservando orden)
+        base_cols = list(self.data_access['columns_IMSS_altas'])
+        columnas_integracion = ['file_date', 'UUID', 'Estado C.R.']
+        columnas = list(dict.fromkeys(base_cols + columnas_integracion))
+
+        # Debug
+        print(f"🔍 Carpeta de integración: {self.integration_path}")
+        print(f"🗂️ Archivos encontrados: {len(integration_files)}")
+        print(f"🧩 Columnas esperadas ({len(columnas)}): {columnas}")
+
+        # Filtrar: aceptar archivos que contengan al menos todas las columnas esperadas
+        valid_files = []
+        for path in integration_files:
+            try:
+                cols = list(pd.read_excel(path, nrows=0).columns)
+                if set(columnas).issubset(set(cols)):
+                    valid_files.append(path)
+                else:
+                    missing = [c for c in columnas if c not in cols]
+                    extra = [c for c in cols if c not in columnas]
+                    print(f"⚠️ {os.path.basename(path)} faltan: {missing} | extras: {extra}")
+            except Exception as e:
+                print(f"⚠️ No se pudo leer {os.path.basename(path)}: {e}")
+
+        if not valid_files:
+            print("❌ No hay archivos válidos con columnas esperadas")
+            return pd.DataFrame(columns=columnas)
+
+        # Cargar cada Excel, quedarnos solo con las columnas esperadas y concatenar
+        partes = []
+        for p in valid_files:
+            try:
+                df = pd.read_excel(p)
+                df = df.loc[:, columnas]  # solo esperadas, en el orden definido
+                partes.append(df)
+            except Exception as e:
+                print(f"⚠️ Error leyendo {os.path.basename(p)}: {e}")
+
+        if not partes:
+            print("❌ No se pudo cargar ningún archivo válido")
+            return pd.DataFrame(columns=columnas)
+
+        df_final = pd.concat(partes, ignore_index=True)
+        print(f"✅ {len(valid_files)} archivos válidos concatenados: {len(df_final)} filas")
+        return df_final
+
+        
     def run(self):
         """Ejecuta el menú principal de la aplicación"""
         if not self.initialize():
@@ -67,8 +122,10 @@ class MiniImssApp:
                 "\t2) Descargar PREI\n"
                 "\t3) Cargar facturas\n"
                 "\t4) Integrar información\n"
-                "\t5) Actualizar SQL\n"
+                "\t5) Actualizar SQL (Transversal)\n"
                 "\t6) Ejecutar consultas SQL\n"
+                "\t7) Actualizar SQL (Longitudinal)\n"
+                "\t8) Inteligencia de negocios\n"
                 "\tauto Ejecutar todo automáticamente\n"
                 "\t0) Salir"
             )).strip()
@@ -119,7 +176,7 @@ class MiniImssApp:
                             print("⚠️ Carga de facturas pendientes")
 
             elif choice == "5":
-                print("🔄 Actualizando información en SQL...")
+                print("🔄 Actualizando información en SQL: día único, neon, eseotres: df_altas ..")
                 
                 # Use get_newest_file method to find the integration file
                 integration_file, date_integration_file= self.data_integration.get_newest_file(self.integration_path)
@@ -135,14 +192,15 @@ class MiniImssApp:
                     df_to_upload[['fechaAltaTrunc', 'fpp']] = df_to_upload[['fechaAltaTrunc', 'fpp']].apply(pd.to_datetime, errors='coerce', format='%d/%m/%Y')
                     df_to_upload = self.sql_integration.sql_column_correction(df_to_upload)
                     schema = 'eseotres'
-                    table_name = 'df_altas'               
+                    table_name = 'df_altas'
+                    #                
                     self.sql_integration.update_sql(df_to_upload, schema, table_name)
-                    
-                    print("✅ Actualización completada")
+                    # Cambio a diccionario
+                    print(f"✅ Actualización {schema}.{table_name} completada")
                 except Exception as e:
                     print(f"❌ Error during SQL update: {e}")
 
-                print("✅ Actualización completada")
+                print(f"✅ Actualización {schema}.{table_name} completada")
             elif choice == "6":
                 print("Generación de agrupaciones y reportes")
                 schema = 'eseotres'
@@ -153,9 +211,29 @@ class MiniImssApp:
                     print(f"⚠️ Queries folder not found: {queries_folder}")
                 else:
                     self.sql_integration.run_queries(queries_folder, schema, table_name)
+            elif choice == "7":
+                df_final = self.altas_historicas()
+                print(df_final.head(2))
+                try:
+                    df_final[['fechaAltaTrunc', 'fpp']] = df_final[['fechaAltaTrunc', 'fpp']].apply(pd.to_datetime, errors='coerce', format='%d/%m/%Y')
+                    df_final = self.sql_integration.sql_column_correction(df_final)
+                    schema = 'eseotres_warehouse'
+                    table_name = 'altas_historicas'
+                    #                
+                    self.sql_integration.update_sql(df_final, schema, table_name)
+                    # Cambio a diccionario
+                    print(f"✅ Actualización {schema}.{table_name} completada")
+                except Exception as e:
+                    print(f"❌ Error durante la actualización: {e}")
+            elif choice == "8":
+                print("Inteligencia de negocios.")
+                self.data_warehouse.Business_Intelligence()
+
             elif choice == "0":
                 print("Saliendo de la aplicación...")
                 break
+
+
 if __name__ == "__main__":
     app = MiniImssApp()
     app.run()
