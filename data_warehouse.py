@@ -11,6 +11,7 @@ from typing import Optional
 try:
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
+    from matplotlib.ticker import FuncFormatter  # Movido aquí para evitar reimports
     _HAS_MPL = True
 except Exception:
     _HAS_MPL = False
@@ -25,16 +26,23 @@ except Exception:
 class DataWarehouse:
     def __init__(self, data_access, working_folder=None):
         self.data_access = data_access
+        self.working_fol
+
+class DataWarehouse:
+    def __init__(self, data_access, working_folder=None):
+        self.data_access = data_access
         self.working_folder = working_folder or os.getcwd()
         
+
     def generate_altas_historico_report(self, df_altas_historico: pd.DataFrame,
-                                        report_folder: Optional[str] = None) -> Optional[str]:  # Removed previous_mode, specific_date
+                                        report_folder: Optional[str] = None) -> Optional[str]:
+        print("Inicio de generate_altas_historico_report")  # Print de depuración
         """
-        Genera un PDF con:
-        - df_period (último file_date) agrupado por estado y suma de importe
-        - df_previous_period basado en selección interactiva de file_date
-        - Comparativo con deltas y gráfico de barras + tabla + tendencias
-        Guarda en report_folder/consulta {YYYY} {MM} {DD}.pdf
+        Genera un DOCX con secciones para PTYCSA y CPI:
+        - Filtra df_altas_historico por 'fechaaltatrunc' (< 2025-06-30 para PTYCSA, >= para CPI).
+        - Para cada subconjunto: gráfico de barras comparativo, tabla resumen y gráfico de tendencias.
+        - Selección interactiva de fechas aplicada al DataFrame completo.
+        - Guarda en report_folder/consulta {YYYY} {MM} {DD}.docx
         """
         if df_altas_historico is None or df_altas_historico.empty:
             print("Sin datos para reporte")
@@ -42,15 +50,21 @@ class DataWarehouse:
 
         df = df_altas_historico.copy()
         df.info()
-        # Tipos
+
+        # Verificar y convertir 'fechaaltatrunc' a datetime, luego a date (para coincidir con consulta SQL)
+        if 'fechaaltatrunc' not in df.columns:
+            raise ValueError("Se requiere 'fechaaltatrunc' para filtrar PTYCSA y CPI")
+        df['fechaaltatrunc'] = pd.to_datetime(df['fechaaltatrunc'], errors='coerce').dt.date
+
+        # Tipos para columnas comunes
         if 'file_date' not in df.columns:
             raise ValueError("Se requiere 'file_date'")
-        df['file_date'] = pd.to_datetime(df['file_date'], errors='coerce')
+        df['file_date'] = pd.to_datetime(df['file_date'], errors='coerce').dt.date
         if 'importe' not in df.columns:
             raise ValueError("Se requiere 'importe'")
         df['importe'] = pd.to_numeric(df['importe'], errors='coerce').fillna(0)
 
-        # Detectar columna de estado
+        # Detectar columna de estado (usando df completo, asumiendo consistencia)
         def _norm(s: str) -> str:
             return ''.join(ch for ch in s.lower() if ch.isalnum() or ch == '_')
         estado_col = None
@@ -63,14 +77,14 @@ class DataWarehouse:
         if estado_col is None:
             raise ValueError("No se encontró la columna de estado (esperado 'estado_c.r.')")
 
-        # Fechas disponibles
+        # Fechas disponibles (del DataFrame completo)
         dates = sorted(df['file_date'].dropna().unique())
         print(f"file_date.nunique = {len(dates)}")
         if not dates:
             print("No hay fechas válidas")
             return None
 
-        # Interactive selection loop
+        # Interactive selection loop (una vez, para ambos subconjuntos)
         while True:
             print("\nFechas disponibles:")
             for i, date in enumerate(dates):
@@ -90,63 +104,94 @@ class DataWarehouse:
             except ValueError:
                 print("Entrada inválida. Usa números enteros.")
 
-        # Periodo actual y previo
-        df_curr = df[df['file_date'] == current_date]
-        df_prev = df[df['file_date'] == prev_date]
         prev_label = f"Seleccionado: {prev_date}"
 
-        # Agrupar por estado
-        df_period = df_curr.groupby(estado_col)['importe'].sum().rename('current')
-        df_prev_period = df_prev.groupby(estado_col)['importe'].sum().rename('previous')
-        summary = pd.concat([df_prev_period, df_period], axis=1).fillna(0)
-        summary['delta'] = summary['current'] - summary['previous']
-        summary['delta_pct'] = summary.apply(lambda r: (r['delta']/r['previous']*100.0) if r['previous'] else None, axis=1)
-        summary = summary.sort_values('current', ascending=False)
+        # Filtrar DataFrames por cortes (usando .date() para coincidir con consulta SQL)
+        cutoff_date = pd.to_datetime('2025-06-30').date()
+        df_previous_tycsa = df[(df['file_date'] == prev_date) & (df['fechaaltatrunc'] < cutoff_date)]
+        df_current_tycsa = df[(df['file_date'] == current_date) & (df['fechaaltatrunc'] < cutoff_date)]
+        df_previous_CPI = df[(df['file_date'] == prev_date) & (df['fechaaltatrunc'] >= cutoff_date)]
+        df_current_CPI = df[(df['file_date'] == current_date) & (df['fechaaltatrunc'] >= cutoff_date)]
 
-        # Currency formatting function
-        def format_currency(x):
-            return f"${x:,.2f}" if pd.notnull(x) else ""
+        print(f"\nDepuración: cutoff_date = {cutoff_date}")
+        print(f"df_current_tycsa shape: {df_current_tycsa.shape}")
+        print(f"df_previous_tycsa shape: {df_previous_tycsa.shape}")
+        print(f"df_current_CPI shape: {df_current_CPI.shape}")
+        print(f"df_previous_CPI shape: {df_previous_CPI.shape}")
 
-        # Apply formatting to summary for table
-        summary_formatted = summary.copy()
-        for col in ['current', 'previous', 'delta']:
-            summary_formatted[col] = summary_formatted[col].apply(format_currency)
-        summary_formatted['delta_pct'] = summary_formatted['delta_pct'].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
+        # Agrupar por estado_col y sumar importe para cada DataFrame
+        grouped_previous_tycsa = df_previous_tycsa.groupby(estado_col)['importe'].sum()
+        grouped_current_tycsa = df_current_tycsa.groupby(estado_col)['importe'].sum()
+        grouped_previous_CPI = df_previous_CPI.groupby(estado_col)['importe'].sum()
+        grouped_current_CPI = df_current_CPI.groupby(estado_col)['importe'].sum()
 
-        # Preparar carpeta y archivo
-        out_dir = report_folder or os.path.join(self.working_folder, 'Reportes BI')
-        create_directory_if_not_exists(out_dir)
-        today = datetime.now()
-        out_docx = os.path.join(out_dir, f"consulta {today.year} {today.month:02d} {today.day:02d}.docx")
+        print("\n=== Agrupado Previous PTYCSA (file_date == prev_date & fechaaltatrunc < cutoff) ===")
+        print(grouped_previous_tycsa.head())
 
-        title = f"Avance de Contrarecibos en el sistema PREI - current: {current_date} | prev: {prev_label}"
+        print("\n=== Agrupado Current PTYCSA (file_date == current_date & fechaaltatrunc < cutoff) ===")
+        print(grouped_current_tycsa.head())
 
-        if not _HAS_DOCX:
-            # Fallback: CSVs
-            path_csv = os.path.join(out_dir, f"consulta_{today.year}{today.month:02d}{today.day:02d}_summary.csv")
-            summary.to_csv(path_csv)
-            print(f"python-docx no disponible. Se guardó CSV: {path_csv}")
-            return None
+        print("\n=== Agrupado Previous CPI (file_date == prev_date & fechaaltatrunc >= cutoff) ===")
+        print(grouped_previous_CPI.head())
 
-        if not _HAS_MPL:
-            print("Matplotlib no disponible. No se pueden generar gráficos.")
-            return None
+        print("\n=== Agrupado Current CPI (file_date == current_date & fechaaltatrunc >= cutoff) ===")
+        print(grouped_current_CPI.head())
 
-        # After summary calculation, add time-series data for trends
-        # Pivot for time-series: sum importe by file_date and estado_col
-        df_trend = df.groupby([estado_col, 'file_date'])['importe'].sum().reset_index()
-        df_trend_pivot = df_trend.pivot(index='file_date', columns=estado_col, values='importe').fillna(0)
-        # Sort columns by total sum descending
-        total_sums = df_trend_pivot.sum().sort_values(ascending=False)
-        top_estados = total_sums.head(10).index.tolist()  # Top 10 for readability
-        df_trend_pivot = df_trend_pivot[top_estados]
+        # Crear y imprimir tablas resumen
+        print("\n=== Summary PTYCSA (previous y current combinados) ===")
+        summary_tycsa = pd.concat([grouped_previous_tycsa.rename('previous'), grouped_current_tycsa.rename('current')], axis=1).fillna(0)
+        # Calcular delta y delta_pct antes de Total
+        summary_tycsa['delta'] = summary_tycsa['current'] - summary_tycsa['previous']
+        summary_tycsa['delta_pct'] = summary_tycsa.apply(lambda r: (r['delta']/r['previous']*100.0) if r['previous'] else None, axis=1)
+        # Agregar fila de Total
+        summary_tycsa.loc['Total', 'previous'] = summary_tycsa['previous'].sum()
+        summary_tycsa.loc['Total', 'current'] = summary_tycsa['current'].sum()
+        summary_tycsa.loc['Total', 'delta'] = summary_tycsa['delta'].sum()
+        if summary_tycsa.loc['Total', 'previous'] != 0:
+            summary_tycsa.loc['Total', 'delta_pct'] = (summary_tycsa.loc['Total', 'delta'] / summary_tycsa.loc['Total', 'previous']) * 100
+        else:
+            summary_tycsa.loc['Total', 'delta_pct'] = None
+        print(summary_tycsa)
 
-        # Construir DOCX
-        try:
-            doc = Document()
-            doc.add_heading(title, 0)
+        print("\n=== Summary CPI (previous y current combinados) ===")
+        summary_cpi = pd.concat([grouped_previous_CPI.rename('previous'), grouped_current_CPI.rename('current')], axis=1).fillna(0)
+        # Calcular delta y delta_pct antes de Total
+        summary_cpi['delta'] = summary_cpi['current'] - summary_cpi['previous']
+        summary_cpi['delta_pct'] = summary_cpi.apply(lambda r: (r['delta']/r['previous']*100.0) if r['previous'] else None, axis=1)
+        # Agregar fila de Total
+        summary_cpi.loc['Total', 'previous'] = summary_cpi['previous'].sum()
+        summary_cpi.loc['Total', 'current'] = summary_cpi['current'].sum()
+        summary_cpi.loc['Total', 'delta'] = summary_cpi['delta'].sum()
+        if summary_cpi.loc['Total', 'previous'] != 0:
+            summary_cpi.loc['Total', 'delta_pct'] = (summary_cpi.loc['Total', 'delta'] / summary_cpi.loc['Total', 'previous']) * 100
+        else:
+            summary_cpi.loc['Total', 'delta_pct'] = None
+        print(summary_cpi)
 
-            # Página 1: barras comparativas (save as image)
+        # Función auxiliar para generar sección por summary
+        def add_summary_section(doc, summary, subset_name, current_date, prev_date, prev_label, out_dir):
+            print(f"Generando sección {subset_name}")  # Print de depuración
+            if summary.empty:
+                print(f"Summary {subset_name} vacío, omitiendo sección.")
+                return
+
+            # Calcular delta y delta_pct
+            summary['delta'] = summary['current'] - summary['previous']
+            summary['delta_pct'] = summary.apply(lambda r: (r['delta']/r['previous']*100.0) if r['previous'] else None, axis=1)
+            summary = summary.sort_values('current', ascending=False)
+
+            # Formatting
+            def format_currency(x):
+                return f"${x:,.2f}" if pd.notnull(x) else ""
+            summary_formatted = summary.copy()
+            for col in ['current', 'previous', 'delta']:
+                summary_formatted[col] = summary_formatted[col].apply(format_currency)
+            summary_formatted['delta_pct'] = summary_formatted['delta_pct'].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
+
+            # Subtítulo
+            doc.add_heading(f"Sección {subset_name}", level=1)
+
+            # Página: barras comparativas
             fig, ax = plt.subplots(figsize=(11.69, 8.27))
             idx = summary.index.tolist()
             x = range(len(idx))
@@ -155,20 +200,18 @@ class DataWarehouse:
             ax.set_xticks(list(x))
             ax.set_xticklabels(idx, rotation=45, ha='right')
             ax.set_ylabel('Importe')
-            ax.set_title(title)
+            ax.set_title(f"Comparativo {subset_name} - current: {current_date} | prev: {prev_label}")
             ax.legend()
             ax.grid(axis='y', linestyle='--', alpha=0.3)
-            # Format y-axis as currency
-            from matplotlib.ticker import FuncFormatter
             ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:,.0f}"))
             fig.tight_layout()
-            bar_img_path = os.path.join(out_dir, 'temp_bar.png')
+            bar_img_path = os.path.join(out_dir, f'temp_bar_{subset_name}.png')
             fig.savefig(bar_img_path)
             plt.close(fig)
             doc.add_picture(bar_img_path, width=Inches(6))
 
-            # Página 2: tabla
-            doc.add_heading('Resumen por estado (top)', level=1)
+            # Página: tabla
+            doc.add_heading(f'Resumen por estado {subset_name} (top)', level=2)
             table = doc.add_table(rows=1, cols=len(summary_formatted.columns) + 1)
             hdr_cells = table.rows[0].cells
             hdr_cells[0].text = 'Estado'
@@ -184,37 +227,61 @@ class DataWarehouse:
                 row_cells[3].text = str(row.delta)
                 row_cells[4].text = str(row.delta_pct)
 
-            # Página 3: tendencias (save as image)
-            fig3, ax3 = plt.subplots(figsize=(11.69, 8.27))
-            for estado in df_trend_pivot.columns:
-                ax3.plot(df_trend_pivot.index, df_trend_pivot[estado], label=estado, marker='o')
-            ax3.set_xlabel('File Date')
-            ax3.set_ylabel('Sum of Importe')
-            ax3.set_title('Tendencias de Importe por Estado (Top 10)')
-            ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-            ax3.grid(axis='y', linestyle='--', alpha=0.3)
-            # Format y-axis as currency
-            ax3.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:,.0f}"))
-            fig3.tight_layout()
-            trend_img_path = os.path.join(out_dir, 'temp_trend.png')
-            fig3.savefig(trend_img_path)
-            plt.close(fig3)
-            doc.add_picture(trend_img_path, width=Inches(6))
+            # Limpiar imagen
+            try:
+                os.remove(bar_img_path)
+                print(f"Imagen {bar_img_path} eliminada.")
+            except Exception as e:
+                print(f"Error eliminando imagen {bar_img_path}: {e}")
 
+            print(f"Sección {subset_name} generada exitosamente.")  # Print de depuración
+
+        # Preparar carpeta y archivo
+        out_dir = report_folder or os.path.join(self.working_folder, 'Reportes BI')
+        create_directory_if_not_exists(out_dir)
+        today = datetime.now()
+        out_docx = os.path.join(out_dir, f"consulta {today.year} {today.month:02d} {today.day:02d}.docx")
+
+        title = f"Avance de Contrarecibos en el sistema PREI - PTYCSA y CPI - current: {current_date} | prev: {prev_label}"
+
+        print(f"_HAS_DOCX: {_HAS_DOCX}, _HAS_MPL: {_HAS_MPL}")  # Print de depuración
+
+        if not _HAS_DOCX:
+            print("python-docx no disponible. Generando CSVs en su lugar.")
+            summary_tycsa.to_csv(os.path.join(out_dir, f"consulta_{today.year}{today.month:02d}{today.day:02d}_PTYCSA_summary.csv"))
+            summary_cpi.to_csv(os.path.join(out_dir, f"consulta_{today.year}{today.month:02d}{today.day:02d}_CPI_summary.csv"))
+            return None
+
+        if not _HAS_MPL:
+            print("Matplotlib no disponible. No se pueden generar gráficos.")
+            return None
+
+        try:
+            print("Creando documento DOCX...")  # Print de depuración
+            doc = Document()
+            doc.add_heading(title, 0)
+
+            # Agregar secciones para PTYCSA y CPI
+            add_summary_section(doc, summary_tycsa, "PTYCSA", current_date, prev_date, prev_label, out_dir)
+            add_summary_section(doc, summary_cpi, "CPI", current_date, prev_date, prev_label, out_dir)
+
+            print(f"Guardando DOCX en: {out_docx}")  # Print de depuración
             doc.save(out_docx)
-            # Clean up temp images
-            os.remove(bar_img_path)
-            os.remove(trend_img_path)
             print(f"Reporte generado: {out_docx}")
             return out_docx
         except Exception as e:
             print(f"Error generando reporte DOCX: {e}")
             return None
+
         
 
     def Business_Intelligence(self):
         source_schema = "eseotres_warehouse"
-        source_table = "altas_historicas"
+        user_input = input('Elige la base del análisis, 1) cortes jupyter lab (ciclos fiscales completos), 2) cortes mini imss (sólo 6 junio): ')
+        if user_input == "1":
+            source_table ='altas_jupyter_lab'
+        elif user_input == "2": 
+            source_table =  "altas_historicas"
         print(f"📦 Fuente: {source_schema}.{source_table}")
         print("Conectando a la base de datos SOURCE...")
         #print(self.data_access)
@@ -238,12 +305,10 @@ class DataWarehouse:
                 self.df_source = df_source
                 try:
                     print(f"📊 df_source cargado: {df_source.shape[0]} filas, {df_source.shape[1]} columnas")
-                    #self.BI_python_altas_historico(df_source)
-                    # Generate default report (previous day)
+                    print("Llamando a generate_altas_historico_report")  # Print de depuración
                     self.generate_altas_historico_report(df_source)  # Updated call, removed previous_mode
-                    
-                except Exception:
-                    print("df_source cargado correctamente")
+                except Exception as e:
+                    print(f"Error en generate_altas_historico_report: {e}")  # Imprimir error real
                 print(f"✅ Conexión OK (SELECT 1 => {ok})")
                 print(f"🗄️ Versión servidor: {ver}")
         except Exception as e:
@@ -256,6 +321,8 @@ class DataWarehouse:
                 pass
 
         print("Inteligencia de negocios")
+
+
 
 
 if __name__ == "__main__":

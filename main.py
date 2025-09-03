@@ -50,7 +50,20 @@ class MiniImssApp:
         print("🔄 Actualizando información en SQL: longitudinal en el tiempo")
 
         # Buscar archivos .xlsx en la carpeta de integración
-        integration_files = glob.glob(os.path.join(self.integration_path, "*.xlsx"))
+        print("¿Cuál quieres que sea la fuente del dataframe histórico?")
+        choice = input("Elige una opción (1: Archivos MiniIMSS, 2: Base de datos JupyterLab): ")
+        schema = None
+        if choice == "1":
+            integration_files = glob.glob(os.path.join(self.integration_path, "*.xlsx"))
+            schema = 'eseotres_warehouse'
+            table_name = 'altas_historicas'            
+        elif choice == "2":
+            integration_files = glob.glob(os.path.join(self.data_access['jupyterlab_files'], "*.xlsx"))
+            schema = 'eseotres_warehouse'
+            table_name = 'altas_jupyter_lab'
+        else:
+            print("Opción no válida")
+            return pd.DataFrame(columns=columnas)
 
         # Columnas esperadas: base + integración (sin duplicados, preservando orden)
         base_cols = list(self.data_access['columns_IMSS_altas'])
@@ -96,7 +109,7 @@ class MiniImssApp:
 
         df_final = pd.concat(partes, ignore_index=True)
         print(f"✅ {len(valid_files)} archivos válidos concatenados: {len(df_final)} filas")
-        return df_final
+        return df_final, schema, table_name
 
         
     def run(self):
@@ -212,17 +225,15 @@ class MiniImssApp:
                 else:
                     self.sql_integration.run_queries(queries_folder, schema, table_name)
             elif choice == "7":
-                df_final = self.altas_historicas()
+                print("Fuente de las altas históricas")
+                df_final, esquema, tabla = self.altas_historicas()
                 print(df_final.head(2))
                 try:
                     df_final[['fechaAltaTrunc', 'fpp']] = df_final[['fechaAltaTrunc', 'fpp']].apply(pd.to_datetime, errors='coerce', format='%d/%m/%Y')
-                    df_final = self.sql_integration.sql_column_correction(df_final)
-                    schema = 'eseotres_warehouse'
-                    table_name = 'altas_historicas'
-                    #                
-                    self.sql_integration.update_sql(df_final, schema, table_name)
+                    df_final = self.sql_integration.sql_column_correction(df_final)         
+                    self.sql_integration.update_sql(df_final, esquema, tabla)
                     # Cambio a diccionario
-                    print(f"✅ Actualización {schema}.{table_name} completada")
+                    print(f"✅ Actualización {esquema}.{tabla} completada")
                 except Exception as e:
                     print(f"❌ Error durante la actualización: {e}")
             elif choice == "8":
@@ -232,6 +243,7 @@ class MiniImssApp:
             elif choice == "0":
                 print("Saliendo de la aplicación...")
                 break
+
 
 
 if __name__ == "__main__":
