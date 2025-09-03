@@ -23,17 +23,36 @@ try:
 except Exception:
     _HAS_DOCX = False
 
-class DataWarehouse:
-    def __init__(self, data_access, working_folder=None):
-        self.data_access = data_access
-        self.working_fol
 
 class DataWarehouse:
     def __init__(self, data_access, working_folder=None):
         self.data_access = data_access
         self.working_folder = working_folder or os.getcwd()
         
+    def split_df_by_date(self, dataframe, cutoff_date, ciclo):
+        estado_col = None
+        for c in dataframe.columns:
+            if 'estado' in c.lower():
+                estado_col = c
+                break
+        if estado_col is None:
+            raise ValueError("No se encontró la columna de estado")
+        print(f"Usando columna de estado: {estado_col}")
 
+        df_tycsa = dataframe[dataframe['fechaaltatrunc'] < cutoff_date]
+        df_cpi = dataframe[dataframe['fechaaltatrunc'] >= cutoff_date]
+         
+        grouped_raw = dataframe.groupby(estado_col)['importe'].sum()
+        grouped_dftycsa = df_tycsa.groupby(estado_col)['importe'].sum()
+        grouped_df_cpi = df_cpi.groupby(estado_col)['importe'].sum()
+
+        print(f'RAW AGRUPADO {ciclo}\n', grouped_raw.head())
+        print(f'DF TYCSA AGRUPADO {ciclo}\n', grouped_dftycsa.head())
+        print(f'DF CPI AGRUPADO {ciclo}\n', grouped_df_cpi.head())
+        
+        # Return the grouped Series instead of DataFrames
+        return grouped_df_cpi, grouped_dftycsa, grouped_raw
+    
     def generate_altas_historico_report(self, df_altas_historico: pd.DataFrame,
                                         report_folder: Optional[str] = None) -> Optional[str]:
         print("Inicio de generate_altas_historico_report")  # Print de depuración
@@ -59,12 +78,14 @@ class DataWarehouse:
         # Tipos para columnas comunes
         if 'file_date' not in df.columns:
             raise ValueError("Se requiere 'file_date'")
-        df['file_date'] = pd.to_datetime(df['file_date'], errors='coerce').dt.date
+        df['file_date'] = pd.to_datetime(df['file_date'], errors='coerce')  # Keep full datetime including hour
         if 'importe' not in df.columns:
             raise ValueError("Se requiere 'importe'")
         df['importe'] = pd.to_numeric(df['importe'], errors='coerce').fillna(0)
 
+
         # Detectar columna de estado (usando df completo, asumiendo consistencia)
+        """
         def _norm(s: str) -> str:
             return ''.join(ch for ch in s.lower() if ch.isalnum() or ch == '_')
         estado_col = None
@@ -76,7 +97,7 @@ class DataWarehouse:
             estado_col = 'estado_c.r.'
         if estado_col is None:
             raise ValueError("No se encontró la columna de estado (esperado 'estado_c.r.')")
-
+        """
         # Fechas disponibles (del DataFrame completo)
         dates = sorted(df['file_date'].dropna().unique())
         print(f"file_date.nunique = {len(dates)}")
@@ -107,78 +128,100 @@ class DataWarehouse:
         prev_label = f"Seleccionado: {prev_date}"
 
         # Filtrar DataFrames por cortes (usando .date() para coincidir con consulta SQL)
+
+
         cutoff_date = pd.to_datetime('2025-06-30').date()
-        df_previous_tycsa = df[(df['file_date'] == prev_date) & (df['fechaaltatrunc'] < cutoff_date)]
-        df_current_tycsa = df[(df['file_date'] == current_date) & (df['fechaaltatrunc'] < cutoff_date)]
-        df_previous_CPI = df[(df['file_date'] == prev_date) & (df['fechaaltatrunc'] >= cutoff_date)]
-        df_current_CPI = df[(df['file_date'] == current_date) & (df['fechaaltatrunc'] >= cutoff_date)]
+        df_previous = df[df['file_date'] == prev_date]
+        df_current = df[df['file_date'] == current_date]
 
-        print(f"\nDepuración: cutoff_date = {cutoff_date}")
-        print(f"df_current_tycsa shape: {df_current_tycsa.shape}")
-        print(f"df_previous_tycsa shape: {df_previous_tycsa.shape}")
-        print(f"df_current_CPI shape: {df_current_CPI.shape}")
-        print(f"df_previous_CPI shape: {df_previous_CPI.shape}")
+        # Split for previous
+        grouped_cpi_prev, grouped_tycsa_prev, grouped_raw_prev = self.split_df_by_date(df_previous, cutoff_date, prev_date)
+        # Split for current
+        grouped_cpi_curr, grouped_tycsa_curr, grouped_raw_curr = self.split_df_by_date(df_current, cutoff_date, current_date)
+        # Merge into summary DataFrames with dates as columns
+        summary_raw = pd.concat([grouped_raw_prev.rename(prev_date), grouped_raw_curr.rename(current_date)], axis=1).fillna(0)
+        summary_tycsa = pd.concat([grouped_tycsa_prev.rename(prev_date), grouped_tycsa_curr.rename(current_date)], axis=1).fillna(0)
+        summary_cpi = pd.concat([grouped_cpi_prev.rename(prev_date), grouped_cpi_curr.rename(current_date)], axis=1).fillna(0)
 
-        # Agrupar por estado_col y sumar importe para cada DataFrame
-        grouped_previous_tycsa = df_previous_tycsa.groupby(estado_col)['importe'].sum()
-        grouped_current_tycsa = df_current_tycsa.groupby(estado_col)['importe'].sum()
-        grouped_previous_CPI = df_previous_CPI.groupby(estado_col)['importe'].sum()
-        grouped_current_CPI = df_current_CPI.groupby(estado_col)['importe'].sum()
-
-        print("\n=== Agrupado Previous PTYCSA (file_date == prev_date & fechaaltatrunc < cutoff) ===")
-        print(grouped_previous_tycsa.head())
-
-        print("\n=== Agrupado Current PTYCSA (file_date == current_date & fechaaltatrunc < cutoff) ===")
-        print(grouped_current_tycsa.head())
-
-        print("\n=== Agrupado Previous CPI (file_date == prev_date & fechaaltatrunc >= cutoff) ===")
-        print(grouped_previous_CPI.head())
-
-        print("\n=== Agrupado Current CPI (file_date == current_date & fechaaltatrunc >= cutoff) ===")
-        print(grouped_current_CPI.head())
 
         # Crear y imprimir tablas resumen
-        print("\n=== Summary PTYCSA (previous y current combinados) ===")
-        summary_tycsa = pd.concat([grouped_previous_tycsa.rename('previous'), grouped_current_tycsa.rename('current')], axis=1).fillna(0)
-        # Calcular delta y delta_pct antes de Total
-        summary_tycsa['delta'] = summary_tycsa['current'] - summary_tycsa['previous']
-        summary_tycsa['delta_pct'] = summary_tycsa.apply(lambda r: (r['delta']/r['previous']*100.0) if r['previous'] else None, axis=1)
+        print("\n=== Summary RAW (previous y current combinados) ===")
+        # Calcular delta y delta_pct
+        summary_raw['delta'] = summary_raw[current_date] - summary_raw[prev_date]
+        summary_raw['delta_pct'] = summary_raw.apply(lambda r: (r['delta']/r[prev_date]*100.0) if r[prev_date] else None, axis=1)
+        # Add total_period column
+        summary_raw['total_period'] = summary_raw[prev_date] + summary_raw[current_date]
         # Agregar fila de Total
-        summary_tycsa.loc['Total', 'previous'] = summary_tycsa['previous'].sum()
-        summary_tycsa.loc['Total', 'current'] = summary_tycsa['current'].sum()
+        summary_raw.loc['Total', prev_date] = summary_raw[prev_date].sum()
+        summary_raw.loc['Total', current_date] = summary_raw[current_date].sum()
+        summary_raw.loc['Total', 'delta'] = summary_raw['delta'].sum()
+        if summary_raw.loc['Total', prev_date] != 0:
+            summary_raw.loc['Total', 'delta_pct'] = (summary_raw.loc['Total', 'delta'] / summary_raw.loc['Total', prev_date]) * 100
+        else:
+            summary_raw.loc['Total', 'delta_pct'] = None
+        summary_raw.loc['Total', 'total_period'] = summary_raw['total_period'].sum()
+        print(summary_raw)
+
+        print("\n=== Summary PTYCSA (previous y current combinados) ===")
+        # Calcular delta y delta_pct
+        summary_tycsa['delta'] = summary_tycsa[current_date] - summary_tycsa[prev_date]
+        summary_tycsa['delta_pct'] = summary_tycsa.apply(lambda r: (r['delta']/r[prev_date]*100.0) if r[prev_date] else None, axis=1)
+        # Add total_period column
+        summary_tycsa['total_period'] = summary_tycsa[prev_date] + summary_tycsa[current_date]
+        # Agregar fila de Total
+        summary_tycsa.loc['Total', prev_date] = summary_tycsa[prev_date].sum()
+        summary_tycsa.loc['Total', current_date] = summary_tycsa[current_date].sum()
         summary_tycsa.loc['Total', 'delta'] = summary_tycsa['delta'].sum()
-        if summary_tycsa.loc['Total', 'previous'] != 0:
-            summary_tycsa.loc['Total', 'delta_pct'] = (summary_tycsa.loc['Total', 'delta'] / summary_tycsa.loc['Total', 'previous']) * 100
+        if summary_tycsa.loc['Total', prev_date] != 0:
+            summary_tycsa.loc['Total', 'delta_pct'] = (summary_tycsa.loc['Total', 'delta'] / summary_tycsa.loc['Total', prev_date]) * 100
         else:
             summary_tycsa.loc['Total', 'delta_pct'] = None
+        summary_tycsa.loc['Total', 'total_period'] = summary_tycsa['total_period'].sum()
         print(summary_tycsa)
 
         print("\n=== Summary CPI (previous y current combinados) ===")
-        summary_cpi = pd.concat([grouped_previous_CPI.rename('previous'), grouped_current_CPI.rename('current')], axis=1).fillna(0)
-        # Calcular delta y delta_pct antes de Total
-        summary_cpi['delta'] = summary_cpi['current'] - summary_cpi['previous']
-        summary_cpi['delta_pct'] = summary_cpi.apply(lambda r: (r['delta']/r['previous']*100.0) if r['previous'] else None, axis=1)
+        # Calcular delta y delta_pct
+        summary_cpi['delta'] = summary_cpi[current_date] - summary_cpi[prev_date]
+        summary_cpi['delta_pct'] = summary_cpi.apply(lambda r: (r['delta']/r[prev_date]*100.0) if r[prev_date] else None, axis=1)
+        # Add total_period column
+        summary_cpi['total_period'] = summary_cpi[prev_date] + summary_cpi[current_date]
         # Agregar fila de Total
-        summary_cpi.loc['Total', 'previous'] = summary_cpi['previous'].sum()
-        summary_cpi.loc['Total', 'current'] = summary_cpi['current'].sum()
+        summary_cpi.loc['Total', prev_date] = summary_cpi[prev_date].sum()
+        summary_cpi.loc['Total', current_date] = summary_cpi[current_date].sum()
         summary_cpi.loc['Total', 'delta'] = summary_cpi['delta'].sum()
-        if summary_cpi.loc['Total', 'previous'] != 0:
-            summary_cpi.loc['Total', 'delta_pct'] = (summary_cpi.loc['Total', 'delta'] / summary_cpi.loc['Total', 'previous']) * 100
+        if summary_cpi.loc['Total', prev_date] != 0:
+            summary_cpi.loc['Total', 'delta_pct'] = (summary_cpi.loc['Total', 'delta'] / summary_cpi.loc['Total', prev_date]) * 100
         else:
             summary_cpi.loc['Total', 'delta_pct'] = None
+        summary_cpi.loc['Total', 'total_period'] = summary_cpi['total_period'].sum()
         print(summary_cpi)
+        # Rename columns for consistency in generate_summary_section
+        summary_tycsa = summary_tycsa.rename(columns={prev_date: 'previous', current_date: 'current'})
+        summary_cpi = summary_cpi.rename(columns={prev_date: 'previous', current_date: 'current'})
 
+        # add 'Total' and the entire period column for summary_cpi, summary_tycsa, summary_raw
         # Función auxiliar para generar sección por summary
-        def add_summary_section(doc, summary, subset_name, current_date, prev_date, prev_label, out_dir):
+        def generate_summary_section(doc, summary, subset_name, current_date, prev_date, prev_label, out_dir):
             print(f"Generando sección {subset_name}")  # Print de depuración
             if summary.empty:
                 print(f"Summary {subset_name} vacío, omitiendo sección.")
                 return
 
-            # Calcular delta y delta_pct
-            summary['delta'] = summary['current'] - summary['previous']
-            summary['delta_pct'] = summary.apply(lambda r: (r['delta']/r['previous']*100.0) if r['previous'] else None, axis=1)
+            # Calcular delta y delta_pct (si no se ha hecho ya)
+            if 'delta' not in summary.columns:
+                summary['delta'] = summary['current'] - summary['previous']
+                summary['delta_pct'] = summary.apply(lambda r: (r['delta']/r['previous']*100.0) if r['previous'] else None, axis=1)
+
+            # Separar fila de Total para colocarla al final
+            total_row = summary.loc[['Total']] if 'Total' in summary.index else None
+            summary = summary.drop('Total', errors='ignore')
+
+            # Ordenar el resto por 'current' descendente
             summary = summary.sort_values('current', ascending=False)
+
+            # Agregar Total al final
+            if total_row is not None:
+                summary = pd.concat([summary, total_row])
 
             # Formatting
             def format_currency(x):
@@ -215,8 +258,8 @@ class DataWarehouse:
             table = doc.add_table(rows=1, cols=len(summary_formatted.columns) + 1)
             hdr_cells = table.rows[0].cells
             hdr_cells[0].text = 'Estado'
-            hdr_cells[1].text = f'Previous ({prev_date})'
-            hdr_cells[2].text = f'Current ({current_date})'
+            hdr_cells[1].text = str(prev_date)  # Just the date
+            hdr_cells[2].text = str(current_date)  # Just the date
             hdr_cells[3].text = 'Delta'
             hdr_cells[4].text = 'Delta %'
             for i, row in enumerate(summary_formatted.head(30).itertuples(index=True)):
@@ -262,8 +305,8 @@ class DataWarehouse:
             doc.add_heading(title, 0)
 
             # Agregar secciones para PTYCSA y CPI
-            add_summary_section(doc, summary_tycsa, "PTYCSA", current_date, prev_date, prev_label, out_dir)
-            add_summary_section(doc, summary_cpi, "CPI", current_date, prev_date, prev_label, out_dir)
+            generate_summary_section(doc, summary_tycsa, "PTYCSA", current_date, prev_date, prev_label, out_dir)
+            generate_summary_section(doc, summary_cpi, "CPI", current_date, prev_date, prev_label, out_dir)
 
             print(f"Guardando DOCX en: {out_docx}")  # Print de depuración
             doc.save(out_docx)
@@ -271,7 +314,7 @@ class DataWarehouse:
             return out_docx
         except Exception as e:
             print(f"Error generando reporte DOCX: {e}")
-            return None
+            return None 
 
         
 
