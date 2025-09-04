@@ -34,10 +34,74 @@ class PREI_MANAGEMENT:
         username = self.data_access['PREI_user']
         password = self.data_access['PREI_password']
         sub_path = os.path.abspath(os.path.join(PREI_path, ".."))
-        excel_path = os.path.join(sub_path, "2025_dates.xlsx")
+        excel_path = {
+            2023: os.path.join(sub_path, "2023_dates.xlsx"),
+            2024: os.path.join(sub_path, "2024_dates.xlsx"),
+            2025: os.path.join(sub_path, "2025_dates.xlsx")
+        }
+
+        # Actualiza último DATE END del año actual si no es hoy
+        today_str = datetime.datetime.today().strftime('%d/%m/%Y')
+        current_year = datetime.datetime.today().year
+        if current_year in excel_path and os.path.exists(excel_path[current_year]):
+            try:
+                df_year = pd.read_excel(excel_path[current_year])
+                df_year_clean = df_year.dropna(subset=['DATE START', 'DATE END'])
+                if not df_year_clean.empty:
+                    last_idx = df_year_clean.index[-1]
+                    if str(df_year_clean.loc[last_idx, 'DATE END']).strip() != today_str:
+                        df_year.loc[last_idx, 'DATE END'] = today_str
+                        df_year.to_excel(excel_path[current_year], index=False)
+                        print(f"Actualizando fecha del PREI {current_year}")
+            except Exception as e:
+                print(f"No se pudo actualizar el Excel del {current_year}: {e}")
+
+        # Un solo driver para todos los archivos
         driver = self.web_driver_manager.create_driver(PREI_path)
-        exito_prei = self.PREI_downloader(driver, username, password, PREI_path, excel_path)
-        return exito_prei
+        overall = True
+        try:
+            for year, path in excel_path.items():
+                if not os.path.exists(path):
+                    print(f"Excel no encontrado para {year}: {path}")
+                    continue
+                ok = self.PREI_downloader_noquit(driver, username, password, PREI_path, path)
+                overall = overall and ok
+            return overall
+        finally:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
+    def PREI_downloader_noquit(self, driver, username, password, download_directory, excel_file):
+        """Igual a PREI_downloader pero sin cerrar el driver, para procesar múltiples Excels seguidos."""
+        df_fecha = pd.read_excel(excel_file)
+        df_fecha = df_fecha.dropna(subset=['DATE START', 'DATE END'])
+
+        print(f"Procesando {len(df_fecha)} rangos de fechas")
+
+        df_missing = self.check_missing_files(df_fecha, username, download_directory)
+
+        if df_missing.empty:
+            print("All files are present and valid.")
+            return True
+        else:
+            print(f"Descargando {len(df_missing)} archivos faltantes:")
+            for _, row in df_missing.iterrows():
+                print(f"Downloading: {self.convert_date_format(row['DATE START'])} to {self.convert_date_format(row['DATE END'])}")
+
+            self.download_files(driver, df_missing, username, password)
+
+            print("Verificando si todas las descargas se completaron...")
+            df_still_missing = self.check_missing_files(df_fecha, username, download_directory)
+
+            if df_still_missing.empty:
+                print("Todas las descargas se completaron exitosamente")
+                return True
+            else:
+                print(f"Aún faltan {len(df_still_missing)} archivos por descargar")
+                print("Puedes ejecutar nuevamente para completar las descargas pendientes")
+                return False
 
     def convert_date_format(self, date):
         return date.replace("/", "-")
@@ -268,7 +332,7 @@ class PREI_MANAGEMENT:
         # 🗑️ Remove files that are valid but not expected
         files_to_remove = set(valid_files) - set(expected_files)
         
-        if files_to_remove:
+        if False and files_to_remove:
             print(f"🗑️ Eliminando {len(files_to_remove)} archivos no esperados:")
             for file_to_remove in files_to_remove:
                 file_path = os.path.join(download_directory, file_to_remove)

@@ -1,0 +1,346 @@
+*** Begin Patch
+*** Update File: SAI.py
+@@
+-class SAI_MANAGEMENT:
+-    def __init__(self, working_folder, web_driver_manager, data_access):
+-        self.working_folder = working_folder
+-        self.web_driver_manager = web_driver_manager
+-        self.data_access = data_access
+-    
+-    def descargar_altas(self, temporal_altas_path):
+-        create_directory_if_not_exists(temporal_altas_path)
+-        self.driver = self.web_driver_manager.create_driver(temporal_altas_path)
+-        self.username = self.data_access['SAI_user']
+-        self.password = self.data_access['SAI_password']
+-        self.today = datetime.datetime.today().strftime('%d/%m/%Y')
+-        range_date = ['30/06/2025', today]
+-        range_date_multi =  {2023: ['01/01/2023', '31/12/2023'], 2024: ['01/01/2024', '31/12/2024'], 2025: ['01/01/2025', today]}
+-        # Llamar a la funciA3n de descarga
+-        print("Iniciando la descarga de Altas...")
+-        exito_descarga = self.SAI_download(driver, username, password, range_date, temporal_altas_path)
+-        return exito_descarga
+-
+-    def SAI_download(self, driver, username, password, range_date, temporal_altas_path):
+-        """
+-        Perform the Altas and Ordenes downloads using the provided Selenium driver.
+-        
+-        The function encapsulates all the XPath-based interactions, login, and download logic.
+-        """
+-        # Contar archivos iniciales
+-        files_in_directory = [f for f in os.listdir(temporal_altas_path) if os.path.isfile(os.path.join(temporal_altas_path, f))]
+-        initial_file_count = len(files_in_directory)
+-        needed_files = 1
+-
+-        elements_xpaths = {
+-            'user': "/html/body/main/div[2]/app-root/app-autenticacion/div[3]/form/div[1]/input",
+-            'password': "/html/body/main/div[2]/app-root/app-autenticacion/div[3]/form/div[2]/input",
+-            'Login_button': "/html/body/main/div[2]/app-root/app-autenticacion/div[3]/form/button",
+-            'Menu': "/html/body/main/div[2]/app-root/app-home/app-header/nav/div/div/ul[2]/li/a",
+-            'Menu_ordenes': "/html/body/main/div[2]/app-root/app-altas/app-header/nav/div/div/ul[2]/li/a",
+-            'Altas': "/html/body/main/div[2]/app-root/app-home/app-header/nav/div/div/ul[2]/li/ul/li[6]/a",
+-            'Altas_inicial': "/html/body/main/div[2]/app-root/app-altas/div[1]/form/div[6]/div[7]/div/input",
+-            'Altas_final': "/html/body/main/div[2]/app-root/app-altas/div[1]/form/div[6]/div[8]/div/input",
+-            'Altas_consultar': "/html/body/main/div[2]/app-root/app-altas/div/div[2]/div[2]/button[2]",
+-            'Altas_exportar': "/html/body/main/div[2]/app-root/app-altas/div[2]/div/button",
+-        }
+-        for key, value in self.range_date_multi.items():
+-            start_date = value[0]
+-            end_date = value[1]
+-            self.operacion_sitio(start_date, end_date)
+-
+-    def operacion_sitio(self, start_date, end_date):
+-
+-        try:
+-            print("[1] Abriendo URL...")
+-            driver.get('https://ppsai-abasto.imss.gob.mx/abasto-web/reporteAltas')
+-            time.sleep(2)
+-
+-            print("[2] Detectando iframes (antes del captcha)...")
+-            WebDriverWait(driver, 10).until(EC.presence_of_all_elements_located((By.TAG_NAME, "iframe")))
+-            iframes = driver.find_elements(By.TAG_NAME, "iframe")
+-            #print(f"[2.1] Total iframes encontrados: {len(iframes)}")
+-
+-            # Si deseas mostrar el captcha mA?s grande, cambia el tamaA?o del iframe aquA- o interactA?a si necesario
+-
+-            input("dY"? Por favor valida el captcha en el navegador y presiona ENTER para continuar...")
+-
+-            #print("[3] Regresando al contenido principal (por si estaba en un iframe)...")
+-            driver.switch_to.default_content()
+-
+-            print("[4] Buscando campo de usuario en el DOM principal...")
+-            user_field = WebDriverWait(driver, 10).until(
+-                EC.presence_of_element_located((By.XPATH, elements_xpaths['user']))
+-            )
+-            user_field.clear()
+-            user_field.send_keys(username)
+-
+-            print(" ?+' Usuario enviado")
+-
+-            print("[4.2] Buscando campo de contraseA?a...")
+-            password_field = WebDriverWait(driver, 10).until(
+-                EC.presence_of_element_located((By.XPATH, elements_xpaths['password']))
+-            )
+-            password_field.clear()
+-            password_field.send_keys(password)
+-
+-            print(" ?+' ContraseA?a enviada")
+-
+-            print("[5] Clic en login...")
+-            login_button = driver.find_element(By.XPATH, elements_xpaths['Login_button'])
+-            login_button.click()
+-
+-            print("?o. Login enviado con Acxito.")
+-
+-
+-
+-            # --- Altas section ---
+-            action = ActionChains(driver)
+-            menu_element = WebDriverWait(driver, 30).until(
+-                EC.visibility_of_element_located((By.XPATH, elements_xpaths['Menu']))
+-            )
+-            action.move_to_element(menu_element).click().perform()
+-            time.sleep(1)
+-            WebDriverWait(driver, 30).until(
+-                EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas']))
+-            ).click()
+-            
+-            
+-            
+-            # Set the start date for Altas
+-            input_date_element = driver.find_element(By.XPATH, elements_xpaths['Altas_inicial'])
+-            time.sleep(1)
+-            input_date_element.send_keys(Keys.ESCAPE)
+-            time.sleep(1)
+-            input_date_element.send_keys(start_date)
+-            time.sleep(1)
+-            
+-            # Set the end date for Altas
+-            input_date_element = driver.find_element(By.XPATH, elements_xpaths['Altas_final'])
+-            input_date_element.send_keys(Keys.ESCAPE)
+-            time.sleep(1)
+-            input_date_element.send_keys(end_date)
+-            time.sleep(1)
+-            
+-            # Execute Altas query and export
+-            WebDriverWait(driver, 30).until(
+-                EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas_consultar']))
+-            ).click()
+-            time.sleep(5)
+-            WebDriverWait(driver, 30).until(
+-                EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas_exportar']))
+-            ).click()
+-            try:
+-                WebDriverWait(driver, 300).until_not(
+-                    EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas_exportar']))
+-                )
+-            except TimeoutException:
+-                print("Button remained clickable in Altas section. Possible download error.")
+-            # Wait until the export button becomes clickable again (download completion)
+-            WebDriverWait(driver, 600).until(
+-                EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas_exportar']))
+-            )
+-            time.sleep(5)
+-
+-
+-        except Exception as e:
+-            print(f"An error occurred: {e}")
+-        finally:
+-            # Verificar si se descargaron los archivos esperados
+-            final_files = [f for f in os.listdir(temporal_altas_path) if os.path.isfile(os.path.join(temporal_altas_path, f))]
+-            final_file_count = len(final_files)
+-            new_files_count = final_file_count - initial_file_count
+-            
+-            if new_files_count >= needed_files:
+-                print(f"?o. Descarga completada: {new_files_count} archivo(s) descargado(s)")
+-                print(f"dY"? Archivos en directorio: {final_files}")
+-                #driver.quit() esto era para bajar un alta por sesiA3n, ahora intentaremos hacer un loop. 
+-                return True
+-            else:
+-                print(f"?s??,? Se esperaban {needed_files} archivo(s) nuevos, pero solo se encontraron {new_files_count}")
+-                input("dY_ Revisa por favor la secciA3n 'Descargas' del navegador Chrome.\nSi ves el archivo descargado correctamente, presiona ENTER para cerrar.")
+-                driver.quit()
+-                return False
++class SAI_MANAGEMENT:
++    def __init__(self, working_folder, web_driver_manager, data_access):
++        self.working_folder = working_folder
++        self.web_driver_manager = web_driver_manager
++        self.data_access = data_access
++
++        # XPath map used throughout the flow
++        self.elements_xpaths = {
++            'user': "/html/body/main/div[2]/app-root/app-autenticacion/div[3]/form/div[1]/input",
++            'password': "/html/body/main/div[2]/app-root/app-autenticacion/div[3]/form/div[2]/input",
++            'Login_button': "/html/body/main/div[2]/app-root/app-autenticacion/div[3]/form/button",
++            'Menu': "/html/body/main/div[2]/app-root/app-home/app-header/nav/div/div/ul[2]/li/a",
++            'Altas': "/html/body/main/div[2]/app-root/app-home/app-header/nav/div/div/ul[2]/li/ul/li[6]/a",
++            'Altas_inicial': "/html/body/main/div[2]/app-root/app-altas/div[1]/form/div[6]/div[7]/div/input",
++            'Altas_final': "/html/body/main/div[2]/app-root/app-altas/div[1]/form/div[6]/div[8]/div/input",
++            'Altas_consultar': "/html/body/main/div[2]/app-root/app-altas/div/div[2]/div[2]/button[2]",
++            'Altas_exportar': "/html/body/main/div[2]/app-root/app-altas/div[2]/div/button",
++        }
++
++    def descargar_altas(self, temporal_altas_path):
++        create_directory_if_not_exists(temporal_altas_path)
++        self.driver = self.web_driver_manager.create_driver(temporal_altas_path)
++        self.username = self.data_access['SAI_user']
++        self.password = self.data_access['SAI_password']
++        self.today = datetime.datetime.today().strftime('%d/%m/%Y')
++
++        # Definir 3 rangos como se solicitó
++        self.range_date_multi = {
++            2023: ['01/01/2023', '31/12/2023'],
++            2024: ['01/01/2024', '31/12/2024'],
++            2025: ['01/01/2025', self.today],
++        }
++
++        print("Iniciando la descarga de Altas para múltiples rangos...")
++        exito_descarga = self.SAI_download(temporal_altas_path)
++        return exito_descarga
++
++    def _clear_and_type_date(self, input_element, value):
++        """
++        Limpia de forma robusta el campo (Ctrl+A, Delete, Escape) y escribe la fecha.
++        Luego valida que el valor se haya establecido; si no, intenta con JavaScript.
++        """
++        try:
++            input_element.click()
++            time.sleep(0.2)
++            input_element.send_keys(Keys.ESCAPE)
++            time.sleep(0.2)
++            input_element.send_keys(Keys.CONTROL, 'a')
++            time.sleep(0.1)
++            input_element.send_keys(Keys.DELETE)
++            time.sleep(0.2)
++            input_element.send_keys(value)
++            time.sleep(0.3)
++
++            # Validar valor
++            current = input_element.get_attribute('value') or ''
++            if current.strip() != value:
++                # Forzar con JS si no se reflejó
++                self.driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));", input_element, value)
++        except Exception:
++            # Intento final por JS directo
++            try:
++                self.driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));", input_element, value)
++            except Exception:
++                pass
++
++    def SAI_download(self, temporal_altas_path):
++        """
++        Login una vez y exporta Altas para cada rango en self.range_date_multi.
++        Retorna True si se descargan al menos tantos archivos como rangos; False en caso contrario.
++        """
++        driver = self.driver
++        elements_xpaths = self.elements_xpaths
++
++        # Contar archivos iniciales
++        initial_files = [f for f in os.listdir(temporal_altas_path) if os.path.isfile(os.path.join(temporal_altas_path, f))]
++        initial_file_count = len(initial_files)
++
++        try:
++            print("[1] Abriendo URL...")
++            driver.get('https://ppsai-abasto.imss.gob.mx/abasto-web/reporteAltas')
++            time.sleep(2)
++
++            print("[2] Detectando iframes (antes del captcha)...")
++            WebDriverWait(driver, 10).until(EC.presence_of_all_elements_located((By.TAG_NAME, "iframe")))
++            _iframes = driver.find_elements(By.TAG_NAME, "iframe")
++
++            input("Por favor valida el captcha en el navegador y presiona ENTER para continuar...")
++
++            driver.switch_to.default_content()
++
++            print("[3] Login...")
++            user_field = WebDriverWait(driver, 10).until(
++                EC.presence_of_element_located((By.XPATH, elements_xpaths['user']))
++            )
++            user_field.clear()
++            user_field.send_keys(self.username)
++
++            password_field = WebDriverWait(driver, 10).until(
++                EC.presence_of_element_located((By.XPATH, elements_xpaths['password']))
++            )
++            password_field.clear()
++            password_field.send_keys(self.password)
++
++            login_button = driver.find_element(By.XPATH, elements_xpaths['Login_button'])
++            login_button.click()
++            print("Login enviado.")
++
++            # Menú Altas
++            action = ActionChains(driver)
++            menu_element = WebDriverWait(driver, 30).until(
++                EC.visibility_of_element_located((By.XPATH, elements_xpaths['Menu']))
++            )
++            action.move_to_element(menu_element).click().perform()
++            time.sleep(1)
++            WebDriverWait(driver, 30).until(
++                EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas']))
++            ).click()
++            time.sleep(1)
++
++            # Procesar cada rango
++            for year, value in self.range_date_multi.items():
++                start_date, end_date = value[0], value[1]
++                print(f"[4] Procesando rango {year}: {start_date} a {end_date}")
++
++                # Campos de fecha
++                start_input = WebDriverWait(driver, 20).until(
++                    EC.presence_of_element_located((By.XPATH, elements_xpaths['Altas_inicial']))
++                )
++                end_input = WebDriverWait(driver, 20).until(
++                    EC.presence_of_element_located((By.XPATH, elements_xpaths['Altas_final']))
++                )
++
++                self._clear_and_type_date(start_input, start_date)
++                time.sleep(0.5)
++                self._clear_and_type_date(end_input, end_date)
++                time.sleep(0.5)
++
++                # Consultar y exportar
++                WebDriverWait(driver, 30).until(
++                    EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas_consultar']))
++                ).click()
++                time.sleep(2)
++
++                export_btn = WebDriverWait(driver, 30).until(
++                    EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas_exportar']))
++                )
++                export_btn.click()
++
++                # Esperar a que termine la descarga:
++                # estrategia: botón deja de estar clickeable y vuelve a estarlo
++                try:
++                    WebDriverWait(driver, 180).until_not(
++                        EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas_exportar']))
++                    )
++                except TimeoutException:
++                    print("Aviso: el botón de exportar no cambió de estado (posible descarga silenciosa).")
++
++                WebDriverWait(driver, 300).until(
++                    EC.element_to_be_clickable((By.XPATH, elements_xpaths['Altas_exportar']))
++                )
++                time.sleep(2)
++
++            # Validación de descargas totales
++            final_files = [f for f in os.listdir(temporal_altas_path) if os.path.isfile(os.path.join(temporal_altas_path, f))]
++            final_file_count = len(final_files)
++            new_files_count = final_file_count - initial_file_count
++
++            expected = len(self.range_date_multi)
++            if new_files_count >= expected:
++                print(f"Descarga completada: {new_files_count} archivo(s) nuevos. Archivos: {final_files}")
++                return True
++            else:
++                print(f"Se esperaban {expected} archivo(s) nuevos, pero solo se encontraron {new_files_count}")
++                input("Revisa la pestaña Descargas de Chrome. Si ves los archivos, presiona ENTER para terminar.")
++                return False
++
++        except Exception as e:
++            print(f"Error en SAI_download: {e}")
++            return False
++        finally:
++            # No cerramos el driver automáticamente para permitir diagnóstico; el llamador decide.
++            pass
+*** End Patch

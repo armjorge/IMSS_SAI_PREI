@@ -67,7 +67,7 @@ class SQL_CONNEXION_UPDATING:
             if connexion:
                 connexion.dispose()
 
-    def run_queries(self, queries_folder, schema, table_name): 
+    def run_queries(self, queries_folder): 
         # Get a list of all SQL files in the queries folder
         sql_files = glob.glob(os.path.join(queries_folder, "*.sql"))
         if not sql_files:

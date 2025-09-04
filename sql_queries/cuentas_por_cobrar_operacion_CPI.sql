@@ -15,13 +15,15 @@ FROM (
         fechaaltatrunc,
         importe,
         descunidad
-    FROM eseotres.df_altas
+    FROM eseotres_warehouse.altas_jupyter_lab
     WHERE 
-        uuid != 'No localizado'
+        file_date = (SELECT MAX(file_date) FROM eseotres_warehouse.altas_jupyter_lab)
+        AND uuid != 'No localizado'
         AND "estado_c.r." IN ('Sin Contra Recibo', 'No localizado')
+        AND fechaaltatrunc::date >= '2025-06-30'::date
 ) subquery
 GROUP BY 
     ROLLUP(DATE_TRUNC('month', fechaaltatrunc), descunidad)
 ORDER BY 
     DATE_TRUNC('month', fechaaltatrunc) ASC NULLS LAST,
-    descunidad ASC NULLS LAST;
+    descunidad

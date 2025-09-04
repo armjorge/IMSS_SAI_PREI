@@ -320,11 +320,8 @@ class DataWarehouse:
 
     def Business_Intelligence(self):
         source_schema = "eseotres_warehouse"
-        user_input = input('Elige la base del análisis, 1) cortes jupyter lab (ciclos fiscales completos), 2) cortes mini imss (sólo 6 junio): ')
-        if user_input == "1":
-            source_table ='altas_jupyter_lab'
-        elif user_input == "2": 
-            source_table =  "altas_historicas"
+        #user_input = input('Elige la base del análisis, 1) cortes jupyter lab (ciclos fiscales completos), 2) cortes mini imss (sólo 6 junio): ')
+        source_table =  "altas_historicas"
         print(f"📦 Fuente: {source_schema}.{source_table}")
         print("Conectando a la base de datos SOURCE...")
         #print(self.data_access)

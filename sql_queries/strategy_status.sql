@@ -17,7 +17,10 @@ FROM (
             WHEN uuid = 'No localizado' THEN 'Por facturar'
             ELSE "estado_c.r."
         END AS modified_estado
-    FROM eseotres.df_altas
+    FROM eseotres_warehouse.altas_jupyter_lab
+    WHERE 
+        file_date = (SELECT MAX(file_date) FROM eseotres_warehouse.altas_jupyter_lab)
+        AND fechaaltatrunc::date >= '2025-06-30'::date
 ) subquery
 GROUP BY 
     ROLLUP(DATE_TRUNC('month', fechaaltatrunc), modified_estado)

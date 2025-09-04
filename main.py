@@ -21,7 +21,22 @@ class MiniImssApp:
         self.data_access = None 
         self.integration_path = os.path.join(self.working_folder, "Integración")
         
-
+    def update_sql_historico(self):
+        print("🔄 Integrando información...")
+        print("Fuente de las altas históricas")
+        df_final, esquema, tabla = self.altas_historicas()
+        print(df_final.head(2))
+        try:
+            df_final[['fechaAltaTrunc', 'fpp']] = df_final[['fechaAltaTrunc', 'fpp']].apply(pd.to_datetime, errors='coerce', format='%d/%m/%Y')
+            df_final = self.sql_integration.sql_column_correction(df_final)         
+            self.sql_integration.update_sql(df_final, esquema, tabla)
+            # Cambio a diccionario
+            print(f"✅ Actualización {esquema}.{tabla} completada")
+        except Exception as e:
+            print(f"❌ Error durante la actualización: {e}")
+        
+        print("✅ Integración completada")    
+          
     def initialize(self):
         """Inicializa los managers principales"""
         print("🚀 Inicializando aplicación...")
@@ -50,20 +65,11 @@ class MiniImssApp:
         print("🔄 Actualizando información en SQL: longitudinal en el tiempo")
 
         # Buscar archivos .xlsx en la carpeta de integración
-        print("¿Cuál quieres que sea la fuente del dataframe histórico?")
-        choice = input("Elige una opción (1: Archivos MiniIMSS, 2: Base de datos JupyterLab): ")
-        schema = None
-        if choice == "1":
-            integration_files = glob.glob(os.path.join(self.integration_path, "*.xlsx"))
-            schema = 'eseotres_warehouse'
-            table_name = 'altas_historicas'            
-        elif choice == "2":
-            integration_files = glob.glob(os.path.join(self.data_access['jupyterlab_files'], "*.xlsx"))
-            schema = 'eseotres_warehouse'
-            table_name = 'altas_jupyter_lab'
-        else:
-            print("Opción no válida")
-            return pd.DataFrame(columns=columnas)
+
+        integration_files = glob.glob(os.path.join(self.integration_path, "*.xlsx"))
+        schema = 'eseotres_warehouse'
+        table_name = 'altas_historicas'       
+        
 
         # Columnas esperadas: base + integración (sin duplicados, preservando orden)
         base_cols = list(self.data_access['columns_IMSS_altas'])
@@ -126,7 +132,7 @@ class MiniImssApp:
         FACTURAS_processed_path = os.path.join(self.working_folder, "Facturas", "Consultas")
         PREI_processed_path = os.path.join(self.working_folder, "PREI", "PREI_files")
         ALTAS_processed_path = os.path.join(self.working_folder, "SAI", "SAI Altas_files")
-
+        queries_folder = os.path.join(self.folder_root, "sql_queries")
         while True:
             print("\n" + "="*50)
             choice = input(message_print(
@@ -135,10 +141,9 @@ class MiniImssApp:
                 "\t2) Descargar PREI\n"
                 "\t3) Cargar facturas\n"
                 "\t4) Integrar información\n"
-                "\t5) Actualizar SQL (Transversal)\n"
+                "\t5) Actualizar SQL (Longitudinal)\n"                
                 "\t6) Ejecutar consultas SQL\n"
-                "\t7) Actualizar SQL (Longitudinal)\n"
-                "\t8) Inteligencia de negocios\n"
+                "\t7) Inteligencia de negocios\n"
                 "\tauto Ejecutar todo automáticamente\n"
                 "\t0) Salir"
             )).strip()
@@ -166,13 +171,28 @@ class MiniImssApp:
                     print("⚠️ Carga de facturas pendientes")
             elif choice == "4":
                 print("🔄 Integrando información...")
-
                 self.data_integration.integrar_datos(PREI_processed_path, ALTAS_processed_path, FACTURAS_processed_path)
+
+            elif choice == "5":
+                print("🔄 Actualizando SQL (Longitudinal)")
+                self.update_sql_historico()
+                print("Generación de agrupaciones y reportes")
+
+
+            elif choice == "6":
+                print("Ejecutando consultas SQL...")
+                # Ensure the queries folder exists
+                if not os.path.exists(queries_folder):
+                    print(f"⚠️ Queries folder not found: {queries_folder}")
+                else:
+                    self.sql_integration.run_queries(queries_folder)
                 
-                print("✅ Integración completada")
+            elif choice == "7":
+                print("Inteligencia de negocios.")
+                self.data_warehouse.Business_Intelligence()
+
             elif choice == 'auto':
                 exito_descarga_altas = self.sai_manager.descargar_altas(temporal_altas_path)
-                
                 if exito_descarga_altas:
                     exito_descarga_prei = self.prei_manager.descargar_PREI(temporal_prei_path)
                     self.downloaded_files_manager.manage_downloaded_files(temporal_altas_path)
@@ -185,65 +205,12 @@ class MiniImssApp:
                             print("✅ Carga de facturas completada")
                             self.data_integration.integrar_datos(PREI_processed_path, ALTAS_processed_path, FACTURAS_processed_path)
                             print("✅ Integración completada")
+                            actualizar_sql = self.update_sql_historico()
                         else:
                             print("⚠️ Carga de facturas pendientes")
-
-            elif choice == "5":
-                print("🔄 Actualizando información en SQL: día único, neon, eseotres: df_altas ..")
-                
-                # Use get_newest_file method to find the integration file
-                integration_file, date_integration_file= self.data_integration.get_newest_file(self.integration_path)
-                print(f"📁 Using integration file: {os.path.basename(integration_file)} del día {date_integration_file}")
-                if integration_file is None:
-                    print("❌ No integration file found")
-                    continue
-                
-                print(f"📁 Using integration file: {os.path.basename(integration_file)}")
-                
-                try:
-                    df_to_upload = pd.read_excel(integration_file, sheet_name='df_altas')
-                    df_to_upload[['fechaAltaTrunc', 'fpp']] = df_to_upload[['fechaAltaTrunc', 'fpp']].apply(pd.to_datetime, errors='coerce', format='%d/%m/%Y')
-                    df_to_upload = self.sql_integration.sql_column_correction(df_to_upload)
-                    schema = 'eseotres'
-                    table_name = 'df_altas'
-                    #                
-                    self.sql_integration.update_sql(df_to_upload, schema, table_name)
-                    # Cambio a diccionario
-                    print(f"✅ Actualización {schema}.{table_name} completada")
-                except Exception as e:
-                    print(f"❌ Error during SQL update: {e}")
-
-                print(f"✅ Actualización {schema}.{table_name} completada")
-            elif choice == "6":
-                print("Generación de agrupaciones y reportes")
-                schema = 'eseotres'
-                table_name = 'df_altas'                
-                queries_folder = os.path.join(self.folder_root, "sql_queries")
-                # Ensure the queries folder exists
-                if not os.path.exists(queries_folder):
-                    print(f"⚠️ Queries folder not found: {queries_folder}")
-                else:
-                    self.sql_integration.run_queries(queries_folder, schema, table_name)
-            elif choice == "7":
-                print("Fuente de las altas históricas")
-                df_final, esquema, tabla = self.altas_historicas()
-                print(df_final.head(2))
-                try:
-                    df_final[['fechaAltaTrunc', 'fpp']] = df_final[['fechaAltaTrunc', 'fpp']].apply(pd.to_datetime, errors='coerce', format='%d/%m/%Y')
-                    df_final = self.sql_integration.sql_column_correction(df_final)         
-                    self.sql_integration.update_sql(df_final, esquema, tabla)
-                    # Cambio a diccionario
-                    print(f"✅ Actualización {esquema}.{tabla} completada")
-                except Exception as e:
-                    print(f"❌ Error durante la actualización: {e}")
-            elif choice == "8":
-                print("Inteligencia de negocios.")
-                self.data_warehouse.Business_Intelligence()
-
             elif choice == "0":
                 print("Saliendo de la aplicación...")
                 break
-
 
 
 if __name__ == "__main__":

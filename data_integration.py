@@ -36,8 +36,8 @@ class DataIntegration:
             df_facturas['file_date'] = facturas_date
 
         if not df_altas.empty and not df_facturas.empty:  # ✅ Cambié 'and df_facturas.empty' por 'and not df_facturas.empty'
-            left_columns = df_altas[['noAlta', 'noOrden', 'importe']]
-            right_columns = df_facturas[['Alta', 'Referencia', 'Importe']]
+            left_columns = df_altas[['noAlta', 'noOrden']]
+            right_columns = df_facturas[['Alta', 'Referencia']]
             UUID_column = 'UUID'
             return_column = df_facturas[UUID_column]
             
@@ -123,7 +123,7 @@ class DataIntegration:
                 
                 # Filtrar DataFrame con la máscara
                 filtered_df = right_columns[mask]
-                #filtered_df = filtered_df.drop_duplicates()
+                filtered_df = filtered_df.drop_duplicates()
 
                 if filtered_df.shape[0] == 1:
                     # Solo un resultado encontrado
