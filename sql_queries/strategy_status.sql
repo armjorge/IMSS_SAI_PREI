@@ -17,9 +17,9 @@ FROM (
             WHEN uuid = 'No localizado' THEN 'Por facturar'
             ELSE "estado_c.r."
         END AS modified_estado
-    FROM eseotres_warehouse.altas_jupyter_lab
+    FROM eseotres_warehouse.altas_historicas
     WHERE 
-        file_date = (SELECT MAX(file_date) FROM eseotres_warehouse.altas_jupyter_lab)
+        file_date = (SELECT MAX(file_date) FROM eseotres_warehouse.altas_historicas)
         AND fechaaltatrunc::date >= '2025-06-30'::date
 ) subquery
 GROUP BY 

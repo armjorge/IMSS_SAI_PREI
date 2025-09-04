@@ -15,9 +15,9 @@ FROM (
         fechaaltatrunc,
         importe,
         descunidad
-    FROM eseotres_warehouse.altas_jupyter_lab
+    FROM eseotres_warehouse.altas_historicas
     WHERE 
-        file_date = (SELECT MAX(file_date) FROM eseotres_warehouse.altas_jupyter_lab)
+        file_date = (SELECT MAX(file_date) FROM eseotres_warehouse.altas_historicas)
         AND uuid != 'No localizado'
         AND "estado_c.r." IN ('Sin Contra Recibo', 'No localizado')
         AND fechaaltatrunc::date >= '2025-06-30'::date
