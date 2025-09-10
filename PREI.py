@@ -22,6 +22,7 @@ import datetime
 import glob
 import platform
 import openpyxl
+from downloaded_files_manager import DownloadedFilesManager
 
 class PREI_MANAGEMENT:
     def __init__(self, working_folder, web_driver_manager, data_access):
@@ -56,22 +57,22 @@ class PREI_MANAGEMENT:
             except Exception as e:
                 print(f"No se pudo actualizar el Excel del {current_year}: {e}")
 
-        # Un solo driver para todos los archivos
-        driver = self.web_driver_manager.create_driver(PREI_path)
+        # Crear un driver por archivo para evitar cierres inesperados entre años
         overall = True
-        try:
-            for year, path in excel_path.items():
-                if not os.path.exists(path):
-                    print(f"Excel no encontrado para {year}: {path}")
-                    continue
-                ok = self.PREI_downloader_noquit(driver, username, password, PREI_path, path)
-                overall = overall and ok
-            return overall
-        finally:
+        for year, path in excel_path.items():
+            if not os.path.exists(path):
+                print(f"Excel no encontrado para {year}: {path}")
+                continue
+            driver = self.web_driver_manager.create_driver(PREI_path)
             try:
-                driver.quit()
-            except Exception:
-                pass
+                ok = self.PREI_downloader(driver, username, password, PREI_path, path)
+                overall = overall and ok
+            finally:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+        return overall
 
     def PREI_downloader_noquit(self, driver, username, password, download_directory, excel_file):
         """Igual a PREI_downloader pero sin cerrar el driver, para procesar múltiples Excels seguidos."""
@@ -375,23 +376,57 @@ class PREI_MANAGEMENT:
             driver.quit()  # Cerrar driver si no hay nada que hacer
             return True
         else:
-            print(f"📥 Descargando {len(df_missing)} archivos faltantes:")
-            for index, row in df_missing.iterrows():
-                print(f"⬇️ Downloading: {self.convert_date_format(row['DATE START'])} to {self.convert_date_format(row['DATE END'])}")
+            max_retries = 5  # Maximum number of download attempts to avoid infinite loops
+            attempt = 0
+            df_still_missing = df_missing
             
-            # Descargar archivos faltantes
-            self.download_files(driver, df_missing, username, password)
+            while not df_still_missing.empty and attempt < max_retries:
+                attempt += 1
+                print(f"📥 Intento {attempt}/{max_retries}: Descargando {len(df_still_missing)} archivos faltantes:")
+                for index, row in df_still_missing.iterrows():
+                    print(f"⬇️ Downloading: {self.convert_date_format(row['DATE START'])} to {self.convert_date_format(row['DATE END'])}")
+                
+                # Descargar archivos faltantes
+                self.download_files(driver, df_still_missing, username, password)
+                
+                # ✅ VERIFICACIÓN - Re-check después de descargar
+                print(f"\n🔍 Verificando después del intento {attempt}...")
+                df_still_missing = self.check_missing_files(df_fecha, username, download_directory)
+                
+                if df_still_missing.empty:
+                    print("✅ Todas las descargas se completaron exitosamente")
+                    driver.quit()
+                    return True
+                else:
+                    print(f"⚠️ Intento {attempt}: Aún faltan {len(df_still_missing)} archivos por descargar")
+                    if attempt < max_retries:
+                        print("🔄 Reintentando automáticamente...")
+                    else:
+                        print(f"❌ Máximo de intentos ({max_retries}) alcanzado. Archivos faltantes:")
+                        for index, row in df_still_missing.iterrows():
+                            print(f"   - {self.convert_date_format(row['DATE START'])} to {self.convert_date_format(row['DATE END'])}")
+                        print("🔄 Puedes ejecutar nuevamente para completar las descargas pendientes o revisar manualmente.")
             
-            # ✅ VERIFICACIÓN FINAL - Re-check después de descargar
-            print("\n🔍 Verificando si todas las descargas se completaron...")
-            df_still_missing = self.check_missing_files(df_fecha, username, download_directory)
-            
-            if df_still_missing.empty:
-                print("✅ Todas las descargas se completaron exitosamente")
-                driver.quit()
-                return True
-            else:
-                print(f"⚠️ Aún faltan {len(df_still_missing)} archivos por descargar")
-                print("🔄 Puedes ejecutar nuevamente para completar las descargas pendientes")
-                driver.quit()
-                return False
+            # If we exit the loop without success, quit and return False
+            driver.quit()
+            return False
+
+    """ 
+    def main():
+        downloads_path = os.path.join(self.working_folder)
+        self.web_driver_manager = WebAutomationDriver(downloads_path)
+        self.data_access = self.config_manager.yaml_creation(self.working_folder)
+        
+        if self.data_access is None:
+            print("⚠️ Configura el archivo YAML antes de continuar")
+            return False
+        
+        # Inicializar web driver manager (sin crear el driver aún)
+        downloads_path = os.path.join(self.working_folder)
+        self.web_driver_manager = WebAutomationDriver(downloads_path)
+        # Inicializar SAI manager
+        self.prei_manager = PREI_MANAGEMENT(self.working_folder, self.web_driver_manager, self.data_access)
+
+if __name__ == "__main__":
+    main()
+    """
