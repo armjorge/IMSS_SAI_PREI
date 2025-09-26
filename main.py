@@ -137,15 +137,20 @@ class MiniImssApp:
             print("\n" + "="*50)
             choice = input(message_print(
                 "Elige una opción:\n"
+                "Extracción:\n"
                 "\t1) Descargar altas\n"
                 "\t2) Descargar PREI\n"
                 "\t3) Cargar facturas\n"
+                "Transformación:\n"
                 "\t4) Integrar información\n"
+                "Carga:\n"
                 "\t5) Actualizar SQL (Longitudinal)\n"                
                 "\t6) Ejecutar consultas SQL\n"
+                "Análisis:\n"
                 "\t7) Inteligencia de negocios\n"
-                "\tauto Ejecutar todo automáticamente\n"
                 "\t0) Salir"
+                "ETL automático: "
+                "\tauto Ejecutar todo automáticamente\n"
             )).strip()
         
             if choice == "1":
@@ -171,7 +176,7 @@ class MiniImssApp:
                     print("⚠️ Carga de facturas pendientes")
             elif choice == "4":
                 print("🔄 Integrando información...")
-                self.data_integration.integrar_datos(PREI_processed_path, ALTAS_processed_path, FACTURAS_processed_path)
+                self.data_integration.integrar_datos()
 
             elif choice == "5":
                 print("🔄 Actualizando SQL (Longitudinal)")
@@ -203,11 +208,12 @@ class MiniImssApp:
                         exito_facturas = self.facturas_manager.cargar_facturas()
                         if exito_facturas:
                             print("✅ Carga de facturas completada")
-                            self.data_integration.integrar_datos(PREI_processed_path, ALTAS_processed_path, FACTURAS_processed_path)
-                            print("✅ Integración completada")
-                            actualizar_sql = self.update_sql_historico()
-                        else:
-                            print("⚠️ Carga de facturas pendientes")
+                        self.data_integration.integrar_datos(PREI_processed_path, ALTAS_processed_path, FACTURAS_processed_path)
+                        print("✅ Integración completada")
+                        self.update_sql_historico()
+                        self.sql_integration.run_queries(queries_folder)
+                    else:
+                        print("⚠️ No pudimos continuar con el proceso ETL en automático")
             elif choice == "0":
                 print("Saliendo de la aplicación...")
                 break

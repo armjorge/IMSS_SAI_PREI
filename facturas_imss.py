@@ -81,9 +81,8 @@ class FACTURAS_IMSS:
             try:
                 df_general.to_excel(output_file, index=False)
                 print(f"\n💾 Archivo guardado en {output_file}")
-                success = True 
                 print(f"📊 Total de filas procesadas: {len(df_general)}")
-                return success
+                return True
             except PermissionError as e:
                 print(f"❌ Error de permisos: {e}")
                 print(f"🔄 Intentando guardar en carpeta alternativa...")
