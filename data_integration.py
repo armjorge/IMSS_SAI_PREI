@@ -10,6 +10,7 @@ import re
 from collections import defaultdict
 import numpy as np
 import datetime
+import json
 
 
 class DataIntegration:
@@ -28,6 +29,7 @@ class DataIntegration:
             "facturas": self.facturas_path,
             "ordenes": self.ordenes_path
             }
+        self.record_file=os.path.join(self.working_folder,"processed_file.db")
 
     def generate_file_groups(self):
         print(self.folders)
@@ -282,7 +284,7 @@ class DataIntegration:
 
         mask_cancelada = (merged['estatus'] == "Cancelada") & (merged['noAlta'].isna())
         merged.loc[mask_cancelada, 'sancion'] = 0        
-        
+
         return merged
     
     def integrar_datos(self):
@@ -338,58 +340,56 @@ class DataIntegration:
                 else: 
                     print(f"❌ Validación fallida: total ordenes del df fusionado con altas {total_ordenes} NO coincide con origen {total_ordenes_df_origen}")
                     print(f"❌ Validación fallida: total entregas del df fusionado con altas {total_entregas_ordenes_altas} NO coincide con origen {total_entregas_altas}")
-
+            
             self.save_if_modified(output_file_path, {
                 "df_altas": df_altas,
                 "df_prei": df_prei,
                 "df_facturas": df_facturas,
                 "df_ordenes": df_ordenes,
                 "df_ordenes_and_altas": df_ordenes_and_altas
-            })
+            }, self.record_file)
                        
-    def save_if_modified(self, output_file_path, df_dict):
+    def save_if_modified(self, output_file_path, df_dict, record_file):
         """
-        Guarda múltiples DataFrames en un Excel solo si alguno cambió.
-        df_dict = {
-            "df_altas": df_altas,
-            "df_prei": df_prei,
-            ...
-        }
+        Guarda múltiples DataFrames en un Excel solo si el archivo destino
+        no tiene la misma fecha de modificación registrada.
         """
-        modified = False
 
-        # 1. Si el archivo ya existe, leerlo
+        # 1. Cargar registro si existe
+        if os.path.exists(record_file):
+            with open(record_file, "r") as f:
+                record = json.load(f)
+        else:
+            record = {}
+
+        file_key = os.path.abspath(output_file_path)
+        last_mod_time = None
+
         if os.path.exists(output_file_path):
-            try:
-                existing = pd.read_excel(output_file_path, sheet_name=None, engine="openpyxl")
+            last_mod_time = os.path.getmtime(output_file_path)
 
-                for name, df in df_dict.items():
-                    if not df.empty:
-                        if name in existing:
-                            # Comparar contenido
-                            if not df.equals(existing[name]):
-                                print(f"⚠️ Hoja '{name}' modificada, se guardará nuevamente.")
-                                modified = True
-                        else:
-                            print(f"⚠️ Hoja '{name}' no existe en archivo, se guardará.")
-                            modified = True
-            except Exception as e:
-                print(f"⚠️ No se pudo leer archivo existente ({e}), se sobrescribirá.")
-                modified = True
-        else:
-            modified = True  # No existe el archivo
+        # 2. Verificar si ya está registrado y coincide
+        if file_key in record and last_mod_time is not None:
+            if abs(record[file_key] - last_mod_time) < 1:  # tolerancia de 1 segundo
+                mod_dt = datetime.datetime.fromtimestamp(last_mod_time)
+                print(f"⏩ Archivo '{os.path.basename(output_file_path)}' no ha cambiado desde {mod_dt}, no se sobrescribe.")
+                return
 
-        # 2. Guardar solo si algo cambió
-        if modified:
-            with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
-                for name, df in df_dict.items():
-                    if not df.empty:
-                        df.to_excel(writer, sheet_name=name, index=False)
-                        print(f"✅ Hoja '{name}' guardada con {len(df)} filas")
-            print(f"\n🎉 ¡Integración completada exitosamente!")
-            print(f"📁 Archivo guardado en: {os.path.basename(output_file_path)}")
-        else:
-            print(f"⏩ No hubo cambios, no se sobrescribió el archivo.")        
+        # 3. Escribir el archivo
+        with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
+            for name, df in df_dict.items():
+                if not df.empty:
+                    df.to_excel(writer, sheet_name=name, index=False)
+                    print(f"✅ Hoja '{name}' guardada con {len(df)} filas")
+
+        print(f"\n🎉 ¡Integración completada exitosamente!")
+        print(f"📁 Archivo guardado en: {os.path.basename(output_file_path)}")
+
+        # 4. Actualizar registro
+        new_mod_time = os.path.getmtime(output_file_path)
+        record[file_key] = new_mod_time
+        with open(record_file, "w") as f:
+            json.dump(record, f)
 
     def invoices_cleaning(self, df_facturas: pd.DataFrame) -> pd.DataFrame:
         cols = ['Referencia', 'Alta']
