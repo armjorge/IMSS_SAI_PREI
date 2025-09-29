@@ -8,6 +8,9 @@ from helpers import message_print, create_directory_if_not_exists
 import yaml
 import re
 from collections import defaultdict
+import numpy as np
+import datetime
+
 
 class DataIntegration:
     def __init__(self, working_folder, data_access, integration_path):
@@ -104,13 +107,188 @@ class DataIntegration:
 
         print(f"📊 Grupos con misma fecha-hora exacta: {exact_match_count}")
         print(f"📊 Grupos con diferencias de hora: {different_count}")
+        complete_groups.sort(
+            key=lambda x: x['group_id'][:10],  # yyyy-mm-dd
+            reverse=True
+        )
 
         return complete_groups
              
+    def IMSS_ordenes_and_altas(self, df_ordenes: pd.DataFrame, df_altas: pd.DataFrame) -> pd.DataFrame:
+        """
+        Une órdenes con altas IMSS:
+        - Join: df_ordenes['orden'] == df_altas['noOrden']
+        - Multi-match: duplica la fila de órdenes por cada alta
+        - Single-match: una sola fila combinada
+        - No-match: columnas de altas en NaN
+        Devuelve las columnas en el orden solicitado.
+        """
 
+        # --- Columnas necesarias ---
+        needed_columns_df_ordenes = [
+            'contrato', 'orden', 'cveArticulo', 'fechaExpedicion',
+            'descripciónEntrega', 'estatus', 'fechaEntrega',
+            'cantidadSolicitada', 'precio', 'importeSinIva', 'file_date'
+        ]
+        needed_columns_df_altas = ['fechaAltaTrunc', 'noAlta', 'cantRecibida', 'importe']
+        join_left = 'orden'
+        join_right = 'noOrden'
+
+        # --- Validación de columnas ---
+        missing_o = [c for c in needed_columns_df_ordenes if c not in df_ordenes.columns]
+        if missing_o:
+            raise ValueError(f"df_ordenes le faltan columnas: {missing_o}")
+
+        required_alt_cols = [join_right] + needed_columns_df_altas
+        missing_a = [c for c in required_alt_cols if c not in df_altas.columns]
+        if missing_a:
+            raise ValueError(f"df_altas le faltan columnas: {missing_a}")
+
+        # --- Filtrar a las columnas necesarias ---
+        df_o = df_ordenes[needed_columns_df_ordenes].copy()
+        df_a = df_altas[required_alt_cols].copy()
+
+        # --- Merge LEFT: respeta 0/1/n matches tal como lo pediste ---
+        merged = df_o.merge(
+            df_a,
+            how='left',
+            left_on=join_left,
+            right_on=join_right
+        )
+
+        # No necesitamos conservar la columna de join derecha
+        merged.drop(columns=[join_right], inplace=True)
+        # --- Normalize "no delivery" rows right here ---
+        merged['cantRecibida'] = merged['cantRecibida'].fillna(0)
+        merged['importe'] = merged['importe'].fillna(0)
+
+
+        # --- Ordenar columnas exactamente como quieres ---
+        final_cols = needed_columns_df_ordenes + needed_columns_df_altas
+        # Aseguramos que estén todas (si algo faltara por nombres, lanzaríamos)
+        for c in final_cols:
+            if c not in merged.columns:
+                raise RuntimeError(f"Columna esperada no encontrada tras el merge: {c}")
+
+        merged = merged[final_cols]
+        # --- After merged = df_o.merge(Rows with partial deliveries) ---
+
+        rows_to_add = []
+
+        for orden_number in merged['orden'].unique():
+            subset = merged[merged['orden'] == orden_number]
+            total_required = subset['importeSinIva'].iloc[0]
+            total_delivered = subset['importe'].fillna(0).sum()
+            import_performance = total_required - total_delivered
+
+            if import_performance > 0 and not np.isclose(import_performance, 0):
+                # Checar si ya hay fila "vacía" (cantRecibida=0 e importe=0)
+                already_has_empty = ((subset['cantRecibida'] == 0) & (subset['importe'] == 0)).any()
+
+                if not already_has_empty:
+                    base_row = subset.iloc[0].copy()
+                    base_row['fechaAltaTrunc'] = np.nan
+                    base_row['noAlta'] = np.nan
+                    base_row['cantRecibida'] = 0
+                    base_row['importe'] = 0
+                    rows_to_add.append(base_row)
+
+                """ 
+                if total_delivered == 0:  # 🚩 case: no deliveries at all
+                    base_row['cantRecibida'] = 0
+                    base_row['importe'] = pieces * precio
+                else:  # 🚩 case: partial delivery
+                    base_row['cantRecibida'] = 0
+                    base_row['importe'] = pieces * precio
+                """
+
+
+
+        # concatenate the implicit rows to merged
+        if rows_to_add:
+            merged = pd.concat([merged, pd.DataFrame(rows_to_add)], ignore_index=True)
+
+        # --- Dates parsing ---
+        date_columns = ['fechaExpedicion', 'fechaEntrega', 'fechaAltaTrunc']
+        for col in date_columns:
+            merged[col] = pd.to_datetime(
+                merged[col],
+                format="%d/%m/%Y",
+                errors="coerce"
+            )
+
+        today_date = pd.to_datetime(datetime.datetime.now().date())
+
+        # 1. Diferencia normal cuando hay ambas fechas
+        merged['days_diff'] = (merged['fechaEntrega'] - merged['fechaAltaTrunc']).dt.days
+
+        # 2. Detectar filas sin fechaAltaTrunc (NaT)
+        mask_nan = merged['fechaAltaTrunc'].isna() & merged['fechaEntrega'].notna()
+
+        # 2a. Todavía dentro del plazo (hoy <= fechaEntrega + 5 días)
+        mask_still_time = mask_nan & (today_date <= merged['fechaEntrega'] + pd.Timedelta(days=5))
+        merged.loc[mask_still_time, 'days_diff'] = (
+            (merged.loc[mask_still_time, 'fechaEntrega'] - today_date).dt.days
+        )
+
+        # 2b. Plazo perdido (hoy > fechaEntrega + 5 días)
+        mask_late = mask_nan & (today_date > merged['fechaEntrega'] + pd.Timedelta(days=5))
+        merged.loc[mask_late, 'days_diff'] = -5
+        def calcular_cantidad_sancionable(df):
+            results = []
+
+            for orden, group in df.groupby("orden", sort=False):
+                group = group.sort_values(by="fechaAltaTrunc", na_position="last").copy()
+
+                # Todas las filas empiezan con lo recibido
+                group["cantidadSancionable"] = group["cantRecibida"].fillna(0)
+
+                # Calcular faltante (si existe)
+                total_recibido = group["cantRecibida"].fillna(0).sum()
+                faltante = group["cantidadSolicitada"].iloc[0] - total_recibido
+
+                if faltante > 0:
+                    mask_remaining = group["cantRecibida"].fillna(0) == 0
+                    if mask_remaining.any():
+                        idx_target = mask_remaining.idxmax()  # primera fila con cantRecibida=0
+                        group.loc[idx_target, "cantidadSancionable"] = faltante
+
+                results.append(group)
+
+            return pd.concat(results, ignore_index=True)
+
+        # Aplicar sobre tu DataFrame
+        merged = calcular_cantidad_sancionable(merged)
+        merged['sancion'] = 0.0
+
+        # --- Caso 1: a tiempo o adelantado (days_diff >= 0) ---
+        mask_on_time = merged['days_diff'] >= 0
+        merged.loc[mask_on_time, 'sancion'] = 0
+
+        # --- Caso 2: atraso (days_diff < 0) ---
+        mask_late = merged['days_diff'] < 0
+
+        # Valor absoluto de los días de atraso, capado a 5
+        late_days = (-merged.loc[mask_late, 'days_diff']).clip(upper=5)
+
+        # Tasa final = días de atraso * 0.02
+        final_rate = late_days * 0.02
+
+        merged.loc[mask_late, 'sancion'] = (
+            merged.loc[mask_late, 'cantidadSancionable'] *
+            merged.loc[mask_late, 'precio'] *
+            final_rate
+        ) 
+
+        mask_cancelada = (merged['estatus'] == "Cancelada") & (merged['noAlta'].isna())
+        merged.loc[mask_cancelada, 'sancion'] = 0        
+        
+        return merged
+    
     def integrar_datos(self):
         print(f"🔍 Buscando archivos más recientes...")
         group_preffix_file = self.generate_file_groups()
+
         for group in group_preffix_file:
             # Cargamos dataframes 
             df_altas    = pd.read_excel(group['altas'])    if group['altas']    else pd.DataFrame()
@@ -131,39 +309,101 @@ class DataIntegration:
                 df_facturas['file_date'] = group_date
             if not df_ordenes.empty:
                 df_ordenes['file_date'] = group_date
+            df_facturas = self.invoices_cleaning(df_facturas)
             altas_invoice_join = {'left': ['noAlta', 'noOrden'], 'right': ['Alta', 'Referencia'], 'return': ['UUID']}
             df_altas = self.populate_df(df_altas, df_facturas, altas_invoice_join)
             altas_prei_join = {'left': ['UUID'], 'right': ['Folio Fiscal'], 'return': ['Estado C.R.']}
             df_altas = self.populate_df(df_altas, df_prei, altas_prei_join)
             output_file_name = f'{prefix}_Integracion.xlsx' 
             output_file_path = os.path.join(self.integration_path, output_file_name)
+
+            df_ordenes_and_altas = self.IMSS_ordenes_and_altas(df_ordenes, df_altas)
+            # -- Validar resultados ---
+            total_ordenes = df_ordenes_and_altas.drop_duplicates(subset = ['orden'])
+            total_ordenes = total_ordenes['cantidadSolicitada'].sum()
+            total_ordenes_df_origen = df_ordenes['cantidadSolicitada'].sum()
+            total_entregas_ordenes_altas = df_ordenes_and_altas['cantRecibida'].sum()
+            total_entregas_altas = df_altas['cantRecibida'].sum()
+            
+            if total_ordenes == total_ordenes_df_origen and total_entregas_ordenes_altas == total_entregas_altas:
+                print(f"✅ Validación exitosa: total ordenes del df fusionado con altas {total_ordenes} coincide con origen {total_ordenes_df_origen}")
+                print(f"✅ Validación exitosa: total entregas del df fusionado con altas {total_entregas_ordenes_altas} coincide con origen {total_entregas_altas}")
+            else:
+                if total_ordenes == total_ordenes_df_origen and total_entregas_ordenes_altas != total_entregas_altas: 
+                    print(f"✅ Validación exitosa: total ordenes del df fusionado con altas {total_ordenes} coincide con origen {total_ordenes_df_origen}")
+                    print(f"❌ Validación fallida: total entregas del df fusionado con altas {total_entregas_ordenes_altas} NO coincide con origen {total_entregas_altas}")
+                elif total_ordenes != total_ordenes_df_origen and total_entregas_ordenes_altas == total_entregas_altas:
+                    print(f"✅ Validación exitosa: total entregas del df fusionado con altas {total_entregas_ordenes_altas} coincide con origen {total_entregas_altas}")
+                    print(f"❌ Validación fallida: total ordenes del df fusionado con altas {total_ordenes} NO coincide con origen {total_ordenes_df_origen}")
+                else: 
+                    print(f"❌ Validación fallida: total ordenes del df fusionado con altas {total_ordenes} NO coincide con origen {total_ordenes_df_origen}")
+                    print(f"❌ Validación fallida: total entregas del df fusionado con altas {total_entregas_ordenes_altas} NO coincide con origen {total_entregas_altas}")
+
+            self.save_if_modified(output_file_path, {
+                "df_altas": df_altas,
+                "df_prei": df_prei,
+                "df_facturas": df_facturas,
+                "df_ordenes": df_ordenes,
+                "df_ordenes_and_altas": df_ordenes_and_altas
+            })
+                       
+    def save_if_modified(self, output_file_path, df_dict):
+        """
+        Guarda múltiples DataFrames en un Excel solo si alguno cambió.
+        df_dict = {
+            "df_altas": df_altas,
+            "df_prei": df_prei,
+            ...
+        }
+        """
+        modified = False
+
+        # 1. Si el archivo ya existe, leerlo
+        if os.path.exists(output_file_path):
             try:
-                # Guardar múltiples hojas en un archivo Excel
-                with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
-                    if not df_altas.empty:
-                        df_altas.to_excel(writer, sheet_name='df_altas', index=False)
-                        print(f"✅ Hoja 'df_altas' guardada con {len(df_altas)} filas")
-                    
-                    if not df_prei.empty:
-                        df_prei.to_excel(writer, sheet_name='df_prei', index=False)
-                        print(f"✅ Hoja 'df_prei' guardada con {len(df_prei)} filas")
-                    
-                    if not df_facturas.empty:
-                        df_facturas.to_excel(writer, sheet_name='df_facturas', index=False)
-                        print(f"✅ Hoja 'df_facturas' guardada con {len(df_facturas)} filas")
-                    if not df_ordenes.empty:
-                        df_ordenes.to_excel(writer, sheet_name='df_ordenes', index=False)
-                        print(f"✅ Hoja 'df_ordenes' guardada con {len(df_ordenes)} filas")
-                                
-                print(f"\n🎉 ¡Integración completada exitosamente!")
-                print(f"📁 Archivo guardado en: {os.path.basename(output_file_path)}")
+                existing = pd.read_excel(output_file_path, sheet_name=None, engine="openpyxl")
 
-                
+                for name, df in df_dict.items():
+                    if not df.empty:
+                        if name in existing:
+                            # Comparar contenido
+                            if not df.equals(existing[name]):
+                                print(f"⚠️ Hoja '{name}' modificada, se guardará nuevamente.")
+                                modified = True
+                        else:
+                            print(f"⚠️ Hoja '{name}' no existe en archivo, se guardará.")
+                            modified = True
             except Exception as e:
-                print(f"❌ Error al guardar archivo de integración: {e}")
+                print(f"⚠️ No se pudo leer archivo existente ({e}), se sobrescribirá.")
+                modified = True
         else:
-            print("⚠️ No se encontraron archivos válidos para integrar")                    
+            modified = True  # No existe el archivo
 
+        # 2. Guardar solo si algo cambió
+        if modified:
+            with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
+                for name, df in df_dict.items():
+                    if not df.empty:
+                        df.to_excel(writer, sheet_name=name, index=False)
+                        print(f"✅ Hoja '{name}' guardada con {len(df)} filas")
+            print(f"\n🎉 ¡Integración completada exitosamente!")
+            print(f"📁 Archivo guardado en: {os.path.basename(output_file_path)}")
+        else:
+            print(f"⏩ No hubo cambios, no se sobrescribió el archivo.")        
+
+    def invoices_cleaning(self, df_facturas: pd.DataFrame) -> pd.DataFrame:
+        cols = ['Referencia', 'Alta']
+        df_facturas = df_facturas.dropna(subset=cols)
+
+        mask_dot00 = (
+            df_facturas['Referencia'].astype(str).str.contains(r'\.00', na=False) |
+            df_facturas['Alta'].astype(str).str.contains(r'\.00', na=False)
+        )
+        df_facturas = df_facturas[~mask_dot00]
+        df_facturas = df_facturas.drop_duplicates(subset=['Referencia', 'Alta'])
+
+        return df_facturas
+    
     def populate_df(self, left_df, right_df, query_dict):
         """
         Pobla columnas en left_df a partir de right_df según query_dict.
@@ -223,7 +463,6 @@ class DataIntegration:
 
         return merged
 
-
     def validate_multiple_fields(self, left_columns, right_columns, return_column, unique=True):
         """
         Valida múltiples campos entre DataFrames y retorna una Serie con los valores correspondientes.
@@ -280,7 +519,6 @@ class DataIntegration:
         
         # Retornar como Serie con el mismo índice que left_columns
         return pd.Series(results, index=left_columns.index)
-
 
     def get_newest_file(self, path, pattern="*.xlsx"): 
         """

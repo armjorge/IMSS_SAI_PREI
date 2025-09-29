@@ -208,7 +208,7 @@ class MiniImssApp:
                         exito_facturas = self.facturas_manager.cargar_facturas()
                         if exito_facturas:
                             print("✅ Carga de facturas completada")
-                        self.data_integration.integrar_datos(PREI_processed_path, ALTAS_processed_path, FACTURAS_processed_path)
+                        self.data_integration.integrar_datos()
                         print("✅ Integración completada")
                         self.update_sql_historico()
                         self.sql_integration.run_queries(queries_folder)
