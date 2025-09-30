@@ -40,7 +40,7 @@ class MiniImssApp:
         self.prei_manager = PREI_MANAGEMENT(self.working_folder, self.web_driver_manager, self.data_access)
         self.facturas_manager = FACTURAS_IMSS(self.working_folder, self.data_access)
         self.downloaded_files_manager = DownloadedFilesManager(self.working_folder, self.data_access)
-        self.data_integration = DataIntegration(self.integration_path, self.data_access, self.integration_path)
+        self.data_integration = DataIntegration(self.working_folder, self.data_access, self.integration_path)
         self.sql_integration = SQL_CONNEXION_UPDATING(self.integration_path, self.data_access)
         self.data_warehouse = DataWarehouse(self.data_access, self.working_folder)
         print("✅ Inicialización completada")

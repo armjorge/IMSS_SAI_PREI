@@ -15,7 +15,7 @@ FROM (
         importe,
         CASE 
             WHEN uuid = 'No localizado' THEN 'Por facturar'
-            ELSE "estado_c.r."
+            ELSE "estado_c_r_"
         END AS modified_estado
     FROM eseotres_warehouse.altas_historicas
     WHERE 

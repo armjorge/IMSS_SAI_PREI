@@ -19,7 +19,7 @@ FROM (
     WHERE 
         file_date = (SELECT MAX(file_date) FROM eseotres_warehouse.altas_historicas)
         AND uuid != 'No localizado'
-        AND "estado_c.r." IN ('Sin Contra Recibo', 'No localizado')
+        AND "estado_c_r_" IN ('Sin Contra Recibo', 'No localizado')
         AND fechaaltatrunc::date >= '2025-06-30'::date
 ) subquery
 GROUP BY 

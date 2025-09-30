@@ -85,21 +85,19 @@ class SQL_CONNEXION_UPDATING:
         # --- Transformaciones de tipos ---
         date_columns   = ['fechaAltaTrunc', 'fpp']                # fechas dd/mm/yyyy
         int_columns    = ['cantRecibida', 'clasPtalRecep']        # enteros
-        float_columns  = ['importe'] # numéricos decimales
+        float_columns  = ['importe']  # numéricos decimales
         string_columns = ['noOrden', 'noAlta', 'noContrato', 'clave', 'descUnidad', 'uuid', 'estado_c_r_']
-        nan_columns = ['clasPtalDist', 'descDist' ,	'totalItems','resguardo']
+        nan_columns = ['clasPtalDist', 'descDist', 'totalItems', 'resguardo']
+
         # Nan Columns
         for col in nan_columns:
             if col in df_altas.columns:
-                # Convertir primero a string o numérico según corresponda
-                if col in ['clasPtalDist', 'totalItems', 'resguardo']:  # numéricos
-                    df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce") \
-                                    .apply(lambda x: float(x) if pd.notna(x) else None)
+                if col in ['clasPtalDist', 'totalItems', 'resguardo']:
+                    df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce").astype('Float64')
                 else:  # strings (ej. descDist)
-                    df_altas[col] = df_altas[col].astype(str).str.strip()
-                    df_altas[col] = df_altas[col].replace(
-                        to_replace=["nan", "NaN", "None"], value=[None, None, None]
-                    )
+                    df_altas[col] = df_altas[col].astype('string').str.strip()
+                    df_altas[col] = df_altas[col].replace({'nan': pd.NA, 'NaN': pd.NA, 'None': pd.NA})
+
         # Convertir fechas
         for col in date_columns:
             if col in df_altas.columns:
@@ -109,36 +107,21 @@ class SQL_CONNEXION_UPDATING:
                     errors="coerce"   # valores inválidos -> NaT
                 )
 
-        # Convertir a enteros (Python int nativo)
+        # Convertir a enteros (mantener dtype entero nullable)
         for col in int_columns:
             if col in df_altas.columns:
-                df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce") \
-                                .apply(lambda x: int(x) if pd.notna(x) else None)
+                df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce").astype('Int64')
 
-        # Convertir a floats (Python float nativo)
+        # Convertir a floats (mantener dtype flotante)
         for col in float_columns:
             if col in df_altas.columns:
-                df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce") \
-                                .apply(lambda x: float(x) if pd.notna(x) else None)
+                df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce").astype('Float64')
 
         # Convertir a string (y limpiar "nan"/"None")
         for col in string_columns:
             if col in df_altas.columns:
-                df_altas[col] = df_altas[col].astype(str).str.strip()
-                df_altas[col] = df_altas[col].replace(
-                    to_replace=["nan", "NaN", "None"], value=[None, None, None]
-                )
-
-        # --- Filtro final de dtypes problemáticos ---
-        # Forzar int64 → int (Python nativo)
-        # 🔎 Forzar ints a int nativo
-        # Forzar int64 → int (Python nativo) en dtype object
-        for col in df_altas.select_dtypes(include=["int64", "Int64"]).columns:
-            df_altas[col] = df_altas[col].apply(lambda x: int(x) if pd.notna(x) else None).astype(object)
-
-        # Forzar float64 → float (Python nativo) en dtype object
-        for col in df_altas.select_dtypes(include=["float64"]).columns:
-            df_altas[col] = df_altas[col].apply(lambda x: float(x) if pd.notna(x) else None).astype(object)
+                df_altas[col] = df_altas[col].astype('string').str.strip()
+                df_altas[col] = df_altas[col].replace({'nan': pd.NA, 'NaN': pd.NA, 'None': pd.NA})
 
         self.update_sql(df_altas, schema, table_name, primary_keys)
         
