@@ -5,10 +5,9 @@ import os
 import glob
 import re 
 from psycopg2.extras import execute_values
-
-import math
-
-
+import numpy as np
+from pandas._libs.missing import NAType
+from pandas._libs.tslibs.nattype import NaTType
 
 class SQL_CONNEXION_UPDATING:
     def __init__(self, integration_path, data_access):
@@ -28,7 +27,55 @@ class SQL_CONNEXION_UPDATING:
             return None
 
     
+    def force_sql_safe_types(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Garantiza que los valores sean SQL-safe:
+        - numpy.int64 → int
+        - numpy.float64 → float
+        - pd.Timestamp → datetime.datetime
+        - NaN / NaT / pd.NA → None
+        - strings → str limpio
+        """
+        def convert_cell(x):
+            if x is None:
+                return None
+            if isinstance(x, (NAType, NaTType)):
+                return None
+            if pd.isna(x):  # cubre NaN, NaT, pd.NA
+                return None
+            if isinstance(x, (np.integer,)):
+                return int(x)
+            if isinstance(x, (np.floating,)):
+                return float(x)
+            if isinstance(x, pd.Timestamp):
+                return x.to_pydatetime()
+            if isinstance(x, str):
+                cleaned = x.strip()
+                lowered = cleaned.lower()
+                if not cleaned or lowered in {'nat', 'nan', 'none', 'null', 'n/a'} or lowered == '<na>':
+                    return None
+                return cleaned
+            return x
 
+        for col in df.columns:
+            df[col] = df[col].apply(convert_cell)
+
+        null_markers = {"", "nat", "nan", "none", "null", "n/a", "<na>"}
+        for col in df.columns:
+            if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
+                mask = df[col].apply(lambda v: isinstance(v, str) and v.strip().lower() in null_markers)
+                if mask.any():
+                    df.loc[mask, col] = None
+
+
+        df = df.where(pd.notnull(df), None)
+
+        # Debug para confirmar que no quedan "NaT"
+        for col in df.columns:
+            if any(val == "NaT" for val in df[col].dropna().unique() if isinstance(val, str)):
+                print(f"⚠️ Columna {col} todavía tiene strings 'NaT'")
+
+        return df
 
     def create_schema_if_not_exists(self, connexion, schema_name):
         """Create schema if it doesn't exist"""
@@ -52,13 +99,24 @@ class SQL_CONNEXION_UPDATING:
     def load_menu(self): 
         print("📂 Iniciando extracción de df_altas desde archivos Excel...")
 
-        primary_keys = ['noAlta', 'noOrden', 'file_date']
+        source_path = self.integration_path
+        extension = "*.xlsx"
+        sheet_name = "df_altas"
+        table_name = "altas_historicas"
+        primary_keys = ["noAlta", "noOrden", "file_date"]
         schema = self.data_access.get('data_warehouse_schema')
-        table_name = 'altas_historicas'
+        altas_dict = {
+            "drop_columns": [],
+            "date_first_columns": ["fechaAltaTrunc", "fpp"],
+            "int_columns": ["cantRecibida", "clasPtalRecep"],  # enteros
+            "float_columns": ["importe"],  # numéricos decimales
+            "string_columns": ["noOrden", "noAlta", "noContrato", "clave", "descUnidad", "uuid", "estado_c_r_"],
+            "nan_columns": ["clasPtalDist", "descDist", "totalItems", "resguardo"],
+        }
 
         # Buscar todos los Excel en la carpeta de integración
         xlsx_files = [
-            f for f in glob.glob(os.path.join(self.integration_path, "*.xlsx"))
+            f for f in glob.glob(os.path.join(source_path, extension))
             if not os.path.basename(f).startswith("~")
         ]
         if not xlsx_files:
@@ -66,13 +124,19 @@ class SQL_CONNEXION_UPDATING:
             return
 
         # Concatenar todos los df_altas de cada archivo
+        drop_columns   = altas_dict.get("drop_columns")
+        date_first_columns = altas_dict.get("date_first_columns")
+        int_columns    = altas_dict.get("int_columns")
+        float_columns  = altas_dict.get("float_columns")
+        string_columns = altas_dict.get("string_columns")
+        nan_columns    = altas_dict.get("nan_columns")
+
         df_list = []
         for file in xlsx_files:
             try:
-                df = pd.read_excel(file, sheet_name="df_altas", engine="openpyxl")
-                #df["file_origin"] = os.path.basename(file)  # opcional: rastrear de dónde vino
+                df = pd.read_excel(file, sheet_name=sheet_name, engine="openpyxl")
                 df_list.append(df)
-                print(f"✅ Leído 'df_altas' de {os.path.basename(file)} con {len(df)} filas")
+                print(f"✅ Leído {sheet_name} de {os.path.basename(file)} con {len(df)} filas")
             except Exception as e:
                 print(f"⚠️ No se pudo leer 'df_altas' de {file}: {e}")
 
@@ -81,50 +145,56 @@ class SQL_CONNEXION_UPDATING:
             return
 
         df_altas = pd.concat(df_list, ignore_index=True)
+        if drop_columns:  # solo entra si la lista no está vacía
+            df_altas = df_altas.drop(columns=drop_columns, errors="ignore")        
         df_altas = df_altas.loc[:, ~df_altas.columns.str.contains("^Unnamed", case=False)]
-        # --- Transformaciones de tipos ---
-        date_columns   = ['fechaAltaTrunc', 'fpp']                # fechas dd/mm/yyyy
-        int_columns    = ['cantRecibida', 'clasPtalRecep']        # enteros
-        float_columns  = ['importe']  # numéricos decimales
-        string_columns = ['noOrden', 'noAlta', 'noContrato', 'clave', 'descUnidad', 'uuid', 'estado_c_r_']
-        nan_columns = ['clasPtalDist', 'descDist', 'totalItems', 'resguardo']
+        #print(df_altas.info())
 
-        # Nan Columns
-        for col in nan_columns:
-            if col in df_altas.columns:
-                if col in ['clasPtalDist', 'totalItems', 'resguardo']:
+        # Nan Columns0
+        if nan_columns:
+            for col in nan_columns:
+                if col in df_altas.columns:
+                    if col in ['clasPtalDist', 'totalItems', 'resguardo']:
+                        df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce").astype('Float64')
+                    else:  # strings (ej. descDist)
+                        df_altas[col] = df_altas[col].astype('string').str.strip()
+                        df_altas[col] = df_altas[col].replace({'nan': pd.NA, 'NaN': pd.NA, 'None': pd.NA})
+
+        # Convertir fechas
+        dummy_date = pd.Timestamp('1900-01-01')
+        if date_first_columns: 
+            for col in date_first_columns:
+                if col in df_altas.columns:
+                    df_altas[col] = pd.to_datetime(
+                        df_altas[col],
+                        format="%d/%m/%Y",
+                        errors="coerce"   # valores inválidos -> NaT
+                    )
+                    df_altas[col] = df_altas[col].fillna(dummy_date)
+
+        # Convertir a enteros (mantener dtype entero nullable)
+        if int_columns:
+            for col in int_columns:
+                if col in df_altas.columns:
+                    df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce").astype('Int64')
+
+        # Convertir a floats (mantener dtype flotante)
+        if float_columns:
+            for col in float_columns:
+                if col in df_altas.columns:
                     df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce").astype('Float64')
-                else:  # strings (ej. descDist)
+
+        # Convertir a string (y limpiar "nan"/"None")
+        if string_columns: 
+            for col in string_columns:
+                if col in df_altas.columns:
                     df_altas[col] = df_altas[col].astype('string').str.strip()
                     df_altas[col] = df_altas[col].replace({'nan': pd.NA, 'NaN': pd.NA, 'None': pd.NA})
 
-        # Convertir fechas
-        for col in date_columns:
-            if col in df_altas.columns:
-                df_altas[col] = pd.to_datetime(
-                    df_altas[col],
-                    format="%d/%m/%Y",
-                    errors="coerce"   # valores inválidos -> NaT
-                )
+        df_altas = self.force_sql_safe_types(df_altas)
 
-        # Convertir a enteros (mantener dtype entero nullable)
-        for col in int_columns:
-            if col in df_altas.columns:
-                df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce").astype('Int64')
+        self.update_postresql(df_altas, schema, table_name, primary_keys)
 
-        # Convertir a floats (mantener dtype flotante)
-        for col in float_columns:
-            if col in df_altas.columns:
-                df_altas[col] = pd.to_numeric(df_altas[col], errors="coerce").astype('Float64')
-
-        # Convertir a string (y limpiar "nan"/"None")
-        for col in string_columns:
-            if col in df_altas.columns:
-                df_altas[col] = df_altas[col].astype('string').str.strip()
-                df_altas[col] = df_altas[col].replace({'nan': pd.NA, 'NaN': pd.NA, 'None': pd.NA})
-
-        self.update_sql(df_altas, schema, table_name, primary_keys)
-        
     
     def _normalize_identifier(self, name: str) -> str:
         # Forzar string
@@ -180,7 +250,7 @@ class SQL_CONNEXION_UPDATING:
         conn.execute(text(create_sql))
         print(f"✅ Tabla '{schema_name}.{table_name}' creada con PK {norm_pks}")
 
-    def update_sql(self, df_to_upload: pd.DataFrame, schema: str, table_name: str, primary_keys: list):
+    def update_postresql(self, df_to_upload: pd.DataFrame, schema: str, table_name: str, primary_keys: list):
         engine = self.sql_conexion()  # must return a SQLAlchemy Engine
         if engine is None:
             print("❌ No se pudo obtener el engine de SQL.")
