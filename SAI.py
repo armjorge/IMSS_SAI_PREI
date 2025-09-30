@@ -419,7 +419,9 @@ class SAI_MANAGEMENT:
             total_new = len(final_files) - initial_count
             if total_new >= total_expected:
                 print(f"Completado: {total_new} archivo(s) nuevos (esperados ≥ {total_expected}).")
+                driver.quit()
                 return True
+        
             else:
                 print(f"Faltan archivos: nuevos {total_new}, esperados {total_expected}.")
                 input("Revisa Descargas de Chrome. Si están todos, ENTER para finalizar.")

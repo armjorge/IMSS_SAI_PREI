@@ -120,6 +120,10 @@ class FACTURAS_IMSS:
                 'Descripcion', 'Cantidad', 'Importe', 'Archivo'
             ])
 
+        processed_files = set()
+        if not df_database.empty and 'Archivo' in df_database.columns:
+            processed_files = set(df_database['Archivo'].dropna().unique())
+
         data = []
 
         for folder in invoice_paths:
@@ -127,6 +131,8 @@ class FACTURAS_IMSS:
             
             for root_dir, dirs, files in os.walk(folder):
                 for file in files:
+                    if file in processed_files:
+                        continue
                     if not file.endswith('.xml'):
                         continue
                     full_path = os.path.join(root_dir, file)
@@ -202,6 +208,8 @@ class FACTURAS_IMSS:
                                 importe,
                                 file
                             ])
+
+                        processed_files.add(file)
 
                     except Exception as e:
                         print(f"[ERROR] Al procesar {file}: {e}")
