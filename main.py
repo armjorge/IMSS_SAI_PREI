@@ -109,9 +109,8 @@ class MiniImssApp:
 
             elif choice == "5":
                 print("🔄 Actualizando SQL (Longitudinal)")
-                self.sql_integration.load_menu()
+                self.sql_integration.postgresql_main_menu()
                 print("Generación de agrupaciones y reportes")
-
 
             elif choice == "6":
                 print("Ejecutando consultas SQL...")

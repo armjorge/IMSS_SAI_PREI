@@ -1,4 +1,4 @@
-from data_integration import DataIntegration
+﻿from data_integration import DataIntegration
 import pandas as pd 
 from sqlalchemy import create_engine, text, insert
 import os 
@@ -26,56 +26,6 @@ class SQL_CONNEXION_UPDATING:
             print(f"❌ Error connecting to database: {e}")
             return None
 
-    
-    def force_sql_safe_types(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Garantiza que los valores sean SQL-safe:
-        - numpy.int64 → int
-        - numpy.float64 → float
-        - pd.Timestamp → datetime.datetime
-        - NaN / NaT / pd.NA → None
-        - strings → str limpio
-        """
-        def convert_cell(x):
-            if x is None:
-                return None
-            if isinstance(x, (NAType, NaTType)):
-                return None
-            if pd.isna(x):  # cubre NaN, NaT, pd.NA
-                return None
-            if isinstance(x, (np.integer,)):
-                return int(x)
-            if isinstance(x, (np.floating,)):
-                return float(x)
-            if isinstance(x, pd.Timestamp):
-                return x.to_pydatetime()
-            if isinstance(x, str):
-                cleaned = x.strip()
-                lowered = cleaned.lower()
-                if not cleaned or lowered in {'nat', 'nan', 'none', 'null', 'n/a'} or lowered == '<na>':
-                    return None
-                return cleaned
-            return x
-
-        for col in df.columns:
-            df[col] = df[col].apply(convert_cell)
-
-        null_markers = {"", "nat", "nan", "none", "null", "n/a", "<na>"}
-        for col in df.columns:
-            if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
-                mask = df[col].apply(lambda v: isinstance(v, str) and v.strip().lower() in null_markers)
-                if mask.any():
-                    df.loc[mask, col] = None
-
-
-        df = df.where(pd.notnull(df), None)
-
-        # Debug para confirmar que no quedan "NaT"
-        for col in df.columns:
-            if any(val == "NaT" for val in df[col].dropna().unique() if isinstance(val, str)):
-                print(f"⚠️ Columna {col} todavía tiene strings 'NaT'")
-
-        return df
 
     def create_schema_if_not_exists(self, connexion, schema_name):
         """Create schema if it doesn't exist"""
@@ -95,17 +45,14 @@ class SQL_CONNEXION_UPDATING:
             print(f"❌ Error creating schema '{schema_name}': {e}")
             return False
 
-
-    def load_menu(self): 
-        print("📂 Iniciando extracción de df_altas desde archivos Excel...")
-
+    def postgresql_main_menu(self):
         source_path = self.integration_path
         extension = "*.xlsx"
         sheet_name = "df_altas"
         table_name = "altas_historicas"
         primary_keys = ["noAlta", "noOrden", "file_date"]
         schema = self.data_access.get('data_warehouse_schema')
-        altas_dict = {
+        columns_dict = {
             "drop_columns": [],
             "date_first_columns": ["fechaAltaTrunc", "fpp"],
             "int_columns": ["cantRecibida", "clasPtalRecep"],  # enteros
@@ -113,7 +60,25 @@ class SQL_CONNEXION_UPDATING:
             "string_columns": ["noOrden", "noAlta", "noContrato", "clave", "descUnidad", "uuid", "estado_c_r_"],
             "nan_columns": ["clasPtalDist", "descDist", "totalItems", "resguardo"],
         }
+        altas_updating = self.postgresql_insert_or_creation(source_path,extension, sheet_name, table_name, primary_keys, schema , columns_dict)
 
+        sheet_name_integracion = "df_ordenes_and_altas"
+        table_name_integracion = "ordenes_y_altas"
+        primary_keys_integracion = ["orden", "file_date"]
+        ordenes_altas_dict = {
+            "drop_columns": [],
+            "date_first_columns": ["fechaAltaTrunc"],
+            "int_columns": ["cantRecibida", "days_diff", "precio", "cantidadSolicitada"],  # enteros
+            "float_columns": ["cantidadSancionable", "sancion"],  # numéricos decimales
+            "string_columns": [],
+            "nan_columns": [],
+        }
+        
+
+        integracion_updating = self.postgresql_insert_or_creation(source_path,extension, sheet_name_integracion, table_name_integracion, primary_keys_integracion, schema , ordenes_altas_dict)
+
+    def postgresql_insert_or_creation(self, source_path,extension, sheet_name, table_name, primary_keys, schema , columns_dict):
+        print("📂 Iniciando extracción de df_altas desde archivos Excel...")
         # Buscar todos los Excel en la carpeta de integración
         xlsx_files = [
             f for f in glob.glob(os.path.join(source_path, extension))
@@ -124,12 +89,12 @@ class SQL_CONNEXION_UPDATING:
             return
 
         # Concatenar todos los df_altas de cada archivo
-        drop_columns   = altas_dict.get("drop_columns")
-        date_first_columns = altas_dict.get("date_first_columns")
-        int_columns    = altas_dict.get("int_columns")
-        float_columns  = altas_dict.get("float_columns")
-        string_columns = altas_dict.get("string_columns")
-        nan_columns    = altas_dict.get("nan_columns")
+        drop_columns   = columns_dict.get("drop_columns")
+        date_first_columns = columns_dict.get("date_first_columns")
+        int_columns    = columns_dict.get("int_columns")
+        float_columns  = columns_dict.get("float_columns")
+        string_columns = columns_dict.get("string_columns")
+        nan_columns    = columns_dict.get("nan_columns")
 
         df_list = []
         for file in xlsx_files:
@@ -160,17 +125,24 @@ class SQL_CONNEXION_UPDATING:
                         df_altas[col] = df_altas[col].astype('string').str.strip()
                         df_altas[col] = df_altas[col].replace({'nan': pd.NA, 'NaN': pd.NA, 'None': pd.NA})
 
-        # Convertir fechas
-        dummy_date = pd.Timestamp('1900-01-01')
-        if date_first_columns: 
+        # Convertir fechas (aceptar distintos formatos)
+        if date_first_columns:
             for col in date_first_columns:
-                if col in df_altas.columns:
-                    df_altas[col] = pd.to_datetime(
-                        df_altas[col],
-                        format="%d/%m/%Y",
-                        errors="coerce"   # valores inválidos -> NaT
-                    )
-                    df_altas[col] = df_altas[col].fillna(dummy_date)
+                if col not in df_altas.columns:
+                    continue
+
+                series = df_altas[col]
+
+                if pd.api.types.is_datetime64_any_dtype(series):
+                    continue
+
+                parsed = pd.to_datetime(series, errors="coerce", dayfirst=True)
+
+                needs_fallback = parsed.isna() & series.notna()
+                if needs_fallback.any():
+                    parsed.loc[needs_fallback] = pd.to_datetime(series.loc[needs_fallback], errors="coerce")
+
+                df_altas[col] = parsed
 
         # Convertir a enteros (mantener dtype entero nullable)
         if int_columns:
@@ -192,9 +164,50 @@ class SQL_CONNEXION_UPDATING:
                     df_altas[col] = df_altas[col].replace({'nan': pd.NA, 'NaN': pd.NA, 'None': pd.NA})
 
         df_altas = self.force_sql_safe_types(df_altas)
+        exit_updating = self.update_postresql(df_altas, schema, table_name, primary_keys)
 
-        self.update_postresql(df_altas, schema, table_name, primary_keys)
+        return exit_updating
+    
+    
+    def force_sql_safe_types(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Garantiza que los valores sean SQL-safe:
+        - numpy.int64 -> int
+        - numpy.float64 -> float
+        - pd.Timestamp -> datetime.datetime
+        - NaN / NaT / pd.NA -> None
+        - strings -> str limpio
+        Tambien detecta columnas que aun contienen 'NaT' como string.
+        """
+        null_markers = {"", "nat", "nan", "none", "null", "n/a", "<na>"}
 
+        def convert_cell(x):
+            if x is None:
+                return None
+            if isinstance(x, (NAType, NaTType)):
+                return None
+            if pd.isna(x):  # cubre NaN, NaT, pd.NA
+                return None
+            if isinstance(x, (np.integer,)):
+                return int(x)
+            if isinstance(x, (np.floating,)):
+                return float(x)
+            if isinstance(x, pd.Timestamp):
+                return x.to_pydatetime()
+            if isinstance(x, str):
+                cleaned = x.strip()
+                lowered = cleaned.lower()
+                if lowered in null_markers:
+                    return None
+                return cleaned
+            return x
+
+        # Aplicamos la normalizacion a todo el DataFrame
+        for col in df.columns:
+            df[col] = df[col].apply(convert_cell)
+
+        return df
+    
     
     def _normalize_identifier(self, name: str) -> str:
         # Forzar string
@@ -300,7 +313,101 @@ class SQL_CONNEXION_UPDATING:
 
         # Drop duplicates on PK
         df = df.drop_duplicates(subset=norm_pks, keep="last")
+        # Work with object dtype so None assignments stick even on datetime columns
+        df = df.astype(object)
+        # Normalize NULL-like values to proper None before SQL insert
         df = df.where(pd.notnull(df), None)
+
+        # Detect lingering string "NaT" values column by column to avoid SQL errors
+        nat_columns = []
+        nat_samples = []
+        for col in df.columns:
+            col_series = df[col]
+
+            def _is_nat_like(value):
+                if isinstance(value, str):
+                    return value.strip().lower() == "nat"
+                if isinstance(value, NaTType):
+                    return True
+                if isinstance(value, np.datetime64):
+                    return pd.isna(value)
+                if isinstance(value, pd.Timestamp):
+                    return pd.isna(value)
+                return False
+
+            mask_nat = col_series.apply(_is_nat_like)
+            if mask_nat.any():
+                nat_columns.append(col)
+                if df[col].dtype != object:
+                    df[col] = df[col].astype(object)
+                df.loc[mask_nat, col] = None
+                if norm_pks:
+                    sample_rows = df.loc[mask_nat, norm_pks].astype(str)
+                    preview = sample_rows.apply(lambda row: " | ".join(row.tolist()), axis=1).head(3).tolist()
+                    nat_samples.extend(preview)
+
+        if nat_columns:
+            lingering_nat = []
+            for col in nat_columns:
+                mask_string_nat = df[col].apply(lambda v: isinstance(v, str) and v.strip().lower() == "nat")
+                if mask_string_nat.any():
+                    lingering_nat.append(col)
+                    if df[col].dtype != object:
+                        df[col] = df[col].astype(object)
+                    df.loc[mask_string_nat, col] = None
+            if lingering_nat:
+                print(f"Warning: columnas aun contienen texto 'NaT' despues de la limpieza: {lingering_nat}")
+            print(f"Warning: columnas con texto 'NaT' detectadas: {nat_columns}. Convirtiendo a NULL antes de insertar.")
+            if nat_samples:
+                print(f"   PK de ejemplo con 'NaT': {nat_samples}")
+
+        df = df.replace({'NaT': None, 'nat': None, 'NaT ': None}, regex=False)
+
+        def _coerce_sql_value(value):
+            if value is None:
+                return None
+            if isinstance(value, NaTType):
+                return None
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {'nat', 'nan', 'none', 'null', ''}:
+                    return None
+                return value.strip()
+            if isinstance(value, pd.Timestamp):
+                return value.to_pydatetime()
+            if isinstance(value, np.datetime64):
+                if pd.isna(value):
+                    return None
+                return pd.to_datetime(value).to_pydatetime()
+            if pd.isna(value):
+                return None
+            if isinstance(value, np.integer):
+                return int(value)
+            if isinstance(value, np.floating):
+                if np.isnan(value):
+                    return None
+                return float(value)
+            return value
+
+        for col in df.columns:
+            cleaned = df[col].apply(_coerce_sql_value)
+            df[col] = cleaned.astype(object)
+
+        residual_nat = []
+        for col in df.columns:
+            has_nat_like = df[col].apply(lambda v: (isinstance(v, str) and v.strip().lower() == "nat") or isinstance(v, NaTType) or (isinstance(v, np.datetime64) and pd.isna(v))).any()
+            if has_nat_like:
+                df[col] = df[col].astype(object)
+                df[col] = df[col].apply(lambda v: None if (isinstance(v, str) and v.strip().lower() == "nat") or isinstance(v, NaTType) or (isinstance(v, np.datetime64) and pd.isna(v)) else v)
+                if df[col].apply(lambda v: isinstance(v, str) and v.strip().lower() == "nat").any():
+                    residual_nat.append(col)
+        if residual_nat:
+            raise ValueError(f"String 'NaT' values remain after sanitizing columns: {residual_nat}")
+
+        # Ensure datetime columns are python datetime objects (not pandas NaT)
+        for col in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                df[col] = df[col].apply(lambda v: v.to_pydatetime() if pd.notnull(v) else None)
 
         #print("🔎 Column dtypes before fix:")
         #print(df.dtypes)
@@ -328,7 +435,11 @@ class SQL_CONNEXION_UPDATING:
         cur = raw_conn.cursor()
         try:
             # Ejecutar todo en un solo batch
-            execute_values(cur, insert_sql, df.itertuples(index=False, name=None), page_size=10000)
+            sanitized_rows = (
+                tuple(_coerce_sql_value(value) for value in row)
+                for row in df.itertuples(index=False, name=None)
+            )
+            execute_values(cur, insert_sql, sanitized_rows, page_size=10000)
         finally:
             cur.close()  # commit y close los maneja SQLAlchemy
 
@@ -467,3 +578,4 @@ class SQL_CONNEXION_UPDATING:
                         print(f"   • {detail_field}")
                     elif amount_field:
                         print(f"   • {amount_field}")
+
