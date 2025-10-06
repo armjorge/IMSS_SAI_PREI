@@ -8,6 +8,8 @@ from psycopg2.extras import execute_values
 import numpy as np
 from pandas._libs.missing import NAType
 from pandas._libs.tslibs.nattype import NaTType
+from colorama import Fore, Style, init
+
 
 class SQL_CONNEXION_UPDATING:
     def __init__(self, integration_path, data_access):
@@ -46,8 +48,12 @@ class SQL_CONNEXION_UPDATING:
             return False
 
     def postgresql_main_menu(self):
+        # Tabla y extensión para todos los casos
         source_path = self.integration_path
         extension = "*.xlsx"
+        ############
+        # Sección para extrar archivos con altas y cargarlos a tablas. 
+        ############
         sheet_name = "df_altas"
         table_name = "altas_historicas"
         primary_keys = ["noAlta", "noOrden", "file_date"]
@@ -62,20 +68,38 @@ class SQL_CONNEXION_UPDATING:
         }
         altas_updating = self.postgresql_insert_or_creation(source_path,extension, sheet_name, table_name, primary_keys, schema , columns_dict)
 
+        ############
+        # Sección para extrar archivos con ordesnes_altas y sanciones, cargarlos a tablas. 
+        ############
         sheet_name_integracion = "df_ordenes_and_altas"
         table_name_integracion = "ordenes_y_altas"
-        primary_keys_integracion = ["orden", "file_date"]
+        primary_keys_integracion = ["orden", "file_date", "cantRecibida"]
         ordenes_altas_dict = {
             "drop_columns": [],
             "date_first_columns": ["fechaAltaTrunc"],
             "int_columns": ["cantRecibida", "days_diff", "precio", "cantidadSolicitada"],  # enteros
             "float_columns": ["cantidadSancionable", "sancion"],  # numéricos decimales
-            "string_columns": [],
-            "nan_columns": [],
+            "string_columns": ['orden', 'solicitud'],
+            "nan_columns": []
         }
         
-
         integracion_updating = self.postgresql_insert_or_creation(source_path,extension, sheet_name_integracion, table_name_integracion, primary_keys_integracion, schema , ordenes_altas_dict)
+
+        ############
+        # Sección para extrar archivos con ordenes y sanciones, cargarlos a tablas. 
+        ############
+        sheet_name = "df_ordenes"
+        table_name = "ordenes_historicas"
+        primary_keys = ["orden", "file_date"]
+        dict_SQL_types = {
+            "drop_columns": [],
+            "date_first_columns": ["fechaExpedicion", 'fechaEntrega'],
+            "int_columns": ["cantidadSolicitada"],  # enteros
+            "float_columns": [],  # numéricos decimales
+            "string_columns": [],
+            "nan_columns": [],
+        }        
+        integracion_updating = self.postgresql_insert_or_creation(source_path,extension, sheet_name, table_name, primary_keys, schema , dict_SQL_types)
 
     def postgresql_insert_or_creation(self, source_path,extension, sheet_name, table_name, primary_keys, schema , columns_dict):
         print("📂 Iniciando extracción de df_altas desde archivos Excel...")
@@ -101,12 +125,12 @@ class SQL_CONNEXION_UPDATING:
             try:
                 df = pd.read_excel(file, sheet_name=sheet_name, engine="openpyxl")
                 df_list.append(df)
-                print(f"✅ Leído {sheet_name} de {os.path.basename(file)} con {len(df)} filas")
+                print(f"\t✅ {sheet_name} de {os.path.basename(file)} con {len(df)} filas")
             except Exception as e:
-                print(f"⚠️ No se pudo leer 'df_altas' de {file}: {e}")
+                print(f"\t⚠️ No se pudo leer 'df_altas' de {file}: {e}")
 
         if not df_list:
-            print("⚠️ Ninguna hoja 'df_altas' pudo ser cargada.")
+            print(f"\t⚠️ Ninguna hoja {sheet_name} pudo ser cargada.")
             return
 
         df_altas = pd.concat(df_list, ignore_index=True)
@@ -290,7 +314,7 @@ class SQL_CONNEXION_UPDATING:
                 if not exists:
                     self.table_creation(conn, df_to_upload, schema, table_name, norm_pks)
 
-                print(f"⚡ Preparado para insertar datos en {schema}.{table_name}")
+                print(f"{Fore.CYAN}⚡\tPreparado para insertar datos en {schema}.{table_name}{Style.RESET_ALL}")
 
                 # 👉 usar la misma conn aquí
                 self.upsert_dataframe(conn, df_to_upload, schema, table_name, primary_keys)
@@ -427,7 +451,7 @@ class SQL_CONNEXION_UPDATING:
 
         total = len(df)
         if total == 0:
-            print(f"⏩ No hay filas para insertar en {schema}.{table_name}.")
+            print(f"{Fore.YELLOW}⏩ No hay filas para insertar en {schema}.{table_name}.{Style.RESET_ALL}")
             return
 
         # 👉 Usar la conexión psycopg2 real que SQLAlchemy administra
@@ -443,7 +467,7 @@ class SQL_CONNEXION_UPDATING:
         finally:
             cur.close()  # commit y close los maneja SQLAlchemy
 
-        print(f"✅ {total} filas insertadas en {schema}.{table_name} (ON CONFLICT DO NOTHING)")
+        print(f"{Fore.GREEN}✅ {total} filas insertadas en {schema}.{table_name} (ON CONFLICT DO NOTHING){Style.RESET_ALL}")
 
     def run_queries(self, queries_folder): 
         # Get a list of all SQL files in the queries folder

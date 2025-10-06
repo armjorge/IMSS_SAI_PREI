@@ -12,6 +12,7 @@ import pandas as pd
 import glob 
 from data_warehouse import DataWarehouse
 
+
 class MiniImssApp:
     def __init__(self):
         self.folder_root = os.getcwd()
@@ -45,7 +46,6 @@ class MiniImssApp:
         self.data_warehouse = DataWarehouse(self.data_access, self.working_folder)
         print("✅ Inicialización completada")
         return True
-  
         
     def run(self):
         """Ejecuta el menú principal de la aplicación"""
@@ -139,7 +139,7 @@ class MiniImssApp:
                         self.data_integration.integrar_datos()
                         print("✅ Integración completada")
                         print("✅ Cargando a SQL")
-                        self.sql_integration.load_menu()
+                        self.sql_integration.postgresql_main_menu()
                         print("✅ Corriendo Queries")                        
                         self.sql_integration.run_queries(queries_folder)
                     else:
