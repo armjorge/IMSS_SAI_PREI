@@ -1,6 +1,5 @@
 import os
 import yaml
-from helpers import message_print, create_directory_if_not_exists
 import pandas as pd
 import datetime
 import platform
@@ -96,7 +95,7 @@ class DownloadedFilesManager:
 
         # ALTAS: combinar (evitando duplicados de archivo) y mover con nombre unificado
         if altas_files:
-            create_directory_if_not_exists(altas_path)
+            os.makedirs(altas_path, exist_ok=True)
 
             # Evitar archivos duplicados (mismo contenido) por hash
             unique_altas_files = []
@@ -157,7 +156,7 @@ class DownloadedFilesManager:
 
         # ORDERS: combinar (evitando duplicados de archivo) y mover con nombre unificado
         if orders_files:
-            create_directory_if_not_exists(orders_path)
+            os.makedirs(orders_path, exist_ok=True)
 
             # Evitar archivos duplicados (mismo contenido) por hash
             unique_orders_files = []
@@ -218,7 +217,7 @@ class DownloadedFilesManager:
 
         # PREI: ya existía lógica de combinación; la mantenemos
         if prei_files:
-            create_directory_if_not_exists(prei_output_path)
+            os.makedirs(prei_output_path, exist_ok=True)
             df_prei = pd.DataFrame()
 
             for file_path in prei_files:

@@ -9,7 +9,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import TimeoutException
-from helpers import create_directory_if_not_exists, message_print
 import numpy as np
 
 class FACTURAS_IMSS:
@@ -23,12 +22,12 @@ class FACTURAS_IMSS:
         self.smart_xml_extraction(xlsx_database)   
         
         preffix = os.path.basename(facturas_folder)
-        create_directory_if_not_exists(facturas_folder)
+        os.makedirs(facturas_folder, exist_ok=True)
         
         
         # ✅ Usar carpeta local en lugar de Dropbox
         consultas_folder = os.path.join(facturas_folder, "Consultas")
-        create_directory_if_not_exists(consultas_folder)
+        os.makedirs(consultas_folder, exist_ok=True)
 
         # DataFrame general vacío
         df_general = pd.DataFrame()
@@ -106,7 +105,7 @@ class FACTURAS_IMSS:
 
     def smart_xml_extraction(self, xlsx_database):
         # Si la base existe, la cargamos; si no, creamos el DataFrame con todas las columnas, incluida la nueva 'Fecha'
-        print(message_print("Extrayendo la información de los XMLs..."))
+        print("Extrayendo la información de los XMLs...")
         invoice_paths = []
         for path in self.data_access['facturas_path']:
             if os.path.exists(path):

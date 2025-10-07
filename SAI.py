@@ -7,7 +7,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import TimeoutException
-from helpers import create_directory_if_not_exists
 
 
 class SAI_MANAGEMENT:
@@ -46,7 +45,7 @@ class SAI_MANAGEMENT:
         return self.descargar_altas_y_ordenes(temporal_altas_path)
 
     def descargar_ordenes(self, temporal_ordenes_path):
-        create_directory_if_not_exists(temporal_ordenes_path)
+        os.makedirs(temporal_ordenes_path, exist_ok=True)
         self.driver = self.web_driver_manager.create_driver(temporal_ordenes_path)
         self.username = self.data_access['SAI_user']
         self.password = self.data_access['SAI_password']
@@ -279,7 +278,7 @@ class SAI_MANAGEMENT:
         Descarga, por cada rango, Altas y luego Ordenes; valida 2 archivos por rango.
         Inicia sesión una vez. Usa el mismo directorio de descargas para ambos.
         """
-        create_directory_if_not_exists(download_path)
+        os.makedirs(download_path, exist_ok=True)
         self.driver = self.web_driver_manager.create_driver(download_path)
         self.username = self.data_access['SAI_user']
         self.password = self.data_access['SAI_password']

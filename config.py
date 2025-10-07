@@ -1,6 +1,5 @@
 import os
 import yaml
-from helpers import message_print, create_directory_if_not_exists
 
 class ConfigManager:
     def __init__(self, working_folder):
@@ -20,11 +19,11 @@ class ConfigManager:
             return data_access
 
         else: 
-            print(message_print("No se localizó un yaml válido, vamos a crear uno"))
+            print("No se localizó un yaml válido, vamos a crear uno")
             
             # Crear directorio si no existe
-            create_directory_if_not_exists(working_folder)
-            
+            os.makedirs(working_folder, exist_ok=True)
+
             platforms = ["imss", "prei"] # Los items
             fields    = ["url", "user", "password", "actions"] # Cada variable
             
@@ -38,5 +37,5 @@ class ConfigManager:
             # Escribe el archivo YAML
             with open(output_yaml, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))
-            print(message_print("Generamos el YAML para que captures información, vuelve a correr la script para abrirlo."))
+            print("Generamos el YAML para que captures información, vuelve a correr la script para abrirlo.")
             return None

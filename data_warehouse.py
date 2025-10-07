@@ -1,7 +1,5 @@
 import os
 from config import ConfigManager
-from helpers import message_print, create_directory_if_not_exists
-
 from sql_connexion_updating import SQL_CONNEXION_UPDATING
 from sqlalchemy import create_engine, text
 import pandas as pd
@@ -281,7 +279,7 @@ class DataWarehouse:
 
         # Preparar carpeta y archivo
         out_dir = report_folder or os.path.join(self.working_folder, 'Reportes BI')
-        create_directory_if_not_exists(out_dir)
+        os.makedirs(out_dir, exist_ok=True)
         today = datetime.now()
         out_docx = os.path.join(out_dir, f"consulta {today.year} {today.month:02d} {today.day:02d}.docx")
 

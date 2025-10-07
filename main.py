@@ -1,6 +1,5 @@
 import os
 from config import ConfigManager
-from helpers import message_print, create_directory_if_not_exists
 from web_automation_driver import WebAutomationDriver
 from SAI import SAI_MANAGEMENT
 from PREI import PREI_MANAGEMENT
@@ -12,6 +11,7 @@ import pandas as pd
 import glob 
 from data_warehouse import DataWarehouse
 from Scripts.Reporting import sql_to_latex
+
 
 class MiniImssApp:
     def __init__(self):
@@ -55,14 +55,14 @@ class MiniImssApp:
             return
         altas_path = os.path.join(self.working_folder, "SAI")
         temporal_altas_path = os.path.join(altas_path, "Temporal downloads")
-        create_directory_if_not_exists(temporal_altas_path)
+        os.makedirs(temporal_altas_path, exist_ok=True)
         PREI_path = os.path.join(self.working_folder, "PREI")
         temporal_prei_path = os.path.join(PREI_path, 'Temporal downloads')
-        create_directory_if_not_exists(temporal_prei_path)
+        os.makedirs(temporal_prei_path, exist_ok=True)
 
         while True:
             print("\n" + "="*50)
-            choice = input(message_print(
+            choice = input(
                 "Elige una opción:\n"
                 "Extracción:\n"
                 "\t1) Descargar altas\n"
@@ -78,7 +78,7 @@ class MiniImssApp:
                 "\t8) Reportes latex\n"
                 "\t0) Salir\n"
                 "\tauto) Ejecutar 1-6 automáticamente\n"
-            )).strip()
+            ).strip()
         
             if choice == "1":
                 exito_descarga_altas = self.sai_manager.descargar_altas(temporal_altas_path)
