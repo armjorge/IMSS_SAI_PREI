@@ -11,7 +11,7 @@ from sql_connexion_updating import SQL_CONNEXION_UPDATING
 import pandas as pd
 import glob 
 from data_warehouse import DataWarehouse
-
+from Scripts.Reporting import sql_to_latex
 
 class MiniImssApp:
     def __init__(self):
@@ -44,6 +44,8 @@ class MiniImssApp:
         self.data_integration = DataIntegration(self.working_folder, self.data_access, self.integration_path)
         self.sql_integration = SQL_CONNEXION_UPDATING(self.integration_path, self.data_access)
         self.data_warehouse = DataWarehouse(self.data_access, self.working_folder)
+        self.queries_folder = os.path.join(self.folder_root, "sql_queries")
+        self.sql_to_latex = sql_to_latex.SQL_TO_LATEX(self.working_folder, self.data_access, self.queries_folder)
         print("✅ Inicialización completada")
         return True
         
@@ -57,11 +59,7 @@ class MiniImssApp:
         PREI_path = os.path.join(self.working_folder, "PREI")
         temporal_prei_path = os.path.join(PREI_path, 'Temporal downloads')
         create_directory_if_not_exists(temporal_prei_path)
-        #ORDERS_processed_path = os.path.join(self.working_folder, "SAI", "Orders_Procesados")
-        FACTURAS_processed_path = os.path.join(self.working_folder, "Facturas", "Consultas")
-        PREI_processed_path = os.path.join(self.working_folder, "PREI", "PREI_files")
-        ALTAS_processed_path = os.path.join(self.working_folder, "SAI", "SAI Altas_files")
-        queries_folder = os.path.join(self.folder_root, "sql_queries")
+
         while True:
             print("\n" + "="*50)
             choice = input(message_print(
@@ -77,9 +75,9 @@ class MiniImssApp:
                 "\t6) Ejecutar consultas SQL\n"
                 "Análisis:\n"
                 "\t7) Inteligencia de negocios\n"
-                "\t0) Salir"
-                "ETL automático: "
-                "\tauto Ejecutar todo automáticamente\n"
+                "\t8) Reportes latex\n"
+                "\t0) Salir\n"
+                "\tauto) Ejecutar 1-6 automáticamente\n"
             )).strip()
         
             if choice == "1":
@@ -115,14 +113,18 @@ class MiniImssApp:
             elif choice == "6":
                 print("Ejecutando consultas SQL...")
                 # Ensure the queries folder exists
-                if not os.path.exists(queries_folder):
-                    print(f"⚠️ Queries folder not found: {queries_folder}")
+                if not os.path.exists(self.queries_folder):
+                    print(f"⚠️ Queries folder not found: {self.queries_folder}")
                 else:
-                    self.sql_integration.run_queries(queries_folder)
+                    self.sql_integration.run_queries(self.queries_folder)
                 
             elif choice == "7":
                 print("Inteligencia de negocios.")
                 self.data_warehouse.Business_Intelligence()
+
+            elif choice == "8":
+                print("Reportes LaTeX.")
+                self.sql_to_latex.reporting_latex_run()
 
             elif choice == 'auto':
                 exito_descarga_altas = self.sai_manager.descargar_altas(temporal_altas_path)
@@ -141,7 +143,7 @@ class MiniImssApp:
                         print("✅ Cargando a SQL")
                         self.sql_integration.postgresql_main_menu()
                         print("✅ Corriendo Queries")                        
-                        self.sql_integration.run_queries(queries_folder)
+                        self.sql_integration.run_queries(self.queries_folder)
                     else:
                         print("⚠️ No pudimos continuar con el proceso ETL en automático")
             elif choice == "0":

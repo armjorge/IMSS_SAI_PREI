@@ -102,7 +102,7 @@ class SQL_CONNEXION_UPDATING:
         integracion_updating = self.postgresql_insert_or_creation(source_path,extension, sheet_name, table_name, primary_keys, schema , dict_SQL_types)
 
     def postgresql_insert_or_creation(self, source_path,extension, sheet_name, table_name, primary_keys, schema , columns_dict):
-        print("📂 Iniciando extracción de df_altas desde archivos Excel...")
+        print(f"📂 Iniciando extracción de {sheet_name} desde archivos Excel...")
         # Buscar todos los Excel en la carpeta de integración
         xlsx_files = [
             f for f in glob.glob(os.path.join(source_path, extension))
@@ -541,6 +541,7 @@ class SQL_CONNEXION_UPDATING:
         Detects common grouping patterns and formats them appropriately.
         """
         current_group = None
+        total_amount = 0.0
         
         for row in rows:
             row_dict = dict(zip(columns, row))
@@ -589,17 +590,37 @@ class SQL_CONNEXION_UPDATING:
                     # Simple case: show group and amount on same line
                     print(f"📅 {group_value.upper()}: {amount_field}")
                 else:
-                    # Complex case: show hierarchical format
-                    # Check if we're starting a new group
-                    if group_value != current_group and not str(group_value).strip().startswith(' '):
-                        current_group = group_value
-                        print(f"\n📅 {group_value.upper()}")
-                    
-                    # Display the detail line
-                    if detail_field and amount_field:
-                        print(f"   • {detail_field}: {amount_field}")
-                    elif detail_field:
-                        print(f"   • {detail_field}")
-                    elif amount_field:
-                        print(f"   • {amount_field}")
-
+                    # Check for simple 3-column fallback
+                    other_values = [str(v).strip() for k, v in row_dict.items() if k != first_col and v and str(v).strip()]
+                    if len(other_values) == 2:
+                        # Assume first is detail, second is amount
+                        detail = other_values[0]
+                        try:
+                            amount = float(other_values[1])
+                            formatted_amount = f"${amount:,.2f}"
+                            total_amount += amount
+                        except ValueError:
+                            formatted_amount = other_values[1]
+                        print(f"📅 {group_value.upper()} : {detail} {formatted_amount}")
+                    else:
+                        # Complex case: show hierarchical format
+                        # Check if we're starting a new group
+                        if group_value != current_group and not str(group_value).strip().startswith(' '):
+                            current_group = group_value
+                            print(f"\n📅 {group_value.upper()}")
+                        
+                        # Display the detail line
+                        if detail_field and amount_field:
+                            print(f"   • {detail_field}: {amount_field}")
+                        elif detail_field:
+                            print(f"   • {detail_field}")
+                        elif amount_field:
+                            print(f"   • {amount_field}")
+                        else:
+                            # Fallback for other patterns
+                            if other_values:
+                                print(f"   • {' | '.join(other_values)}")
+        
+        # Print total if there were amounts
+        if total_amount > 0:
+            print(f"\n🏆 TOTAL: ${total_amount:,.2f}")

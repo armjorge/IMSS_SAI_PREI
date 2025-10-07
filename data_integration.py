@@ -290,8 +290,33 @@ class DataIntegration:
     def integrar_datos(self):
         print(f"🔍 Buscando archivos más recientes...")
         group_preffix_file = self.generate_file_groups()
+        # Load the record file to check for existing processed files
 
+        if os.path.exists(self.record_file):
+            with open(self.record_file, "r") as f:
+                record = json.load(f)
+        else:
+            record = {}
+
+    
         for group in group_preffix_file:
+            # Compute output file path
+            prefix = group['group_id'].split("_")[0]   # "2025-09-19-08"
+            output_file_name = f'{prefix}_Integracion.xlsx' 
+            output_file_path = os.path.join(self.integration_path, output_file_name)
+            file_key = os.path.abspath(output_file_path)
+
+            # Check if file exists and matches the record
+            skip_processing = False
+            if file_key in record and os.path.exists(output_file_path):
+                last_mod_time = os.path.getmtime(output_file_path)
+                if abs(record[file_key] - last_mod_time) < 1:  # tolerance of 1 second
+                    print(f"⏩ Grupo '{group['group_id']}' ya procesado y sin cambios, omitiendo procesamiento.")
+                    skip_processing = True
+
+            if skip_processing:
+                continue            
+            
             # Cargamos dataframes 
             df_altas    = pd.read_excel(group['altas'])    if group['altas']    else pd.DataFrame()
             df_prei     = pd.read_excel(group['prei'])     if group['prei']     else pd.DataFrame()
