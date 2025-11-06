@@ -366,6 +366,9 @@ class DataIntegration:
                     print(f"❌ Validación fallida: total ordenes del df fusionado con altas {total_ordenes} NO coincide con origen {total_ordenes_df_origen}")
                     print(f"❌ Validación fallida: total entregas del df fusionado con altas {total_entregas_ordenes_altas} NO coincide con origen {total_entregas_altas}")
             
+            ## --  Corregimos formato de fechaAltaTrunc 
+            df_altas['fechaAltaTrunc'] = pd.to_datetime(df_altas['fechaAltaTrunc'], format='%d/%m/%Y', errors='coerce')
+
             self.save_if_modified(output_file_path, {
                 "df_altas": df_altas,
                 "df_prei": df_prei,
