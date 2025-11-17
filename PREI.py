@@ -7,7 +7,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import TimeoutException
-from helpers import create_directory_if_not_exists
 import os
 import time
 import pandas as pd
@@ -31,7 +30,7 @@ class PREI_MANAGEMENT:
         self.data_access = data_access
 
     def descargar_PREI(self, PREI_path):
-        create_directory_if_not_exists(PREI_path)
+        os.makedirs(PREI_path, exist_ok=True)
         username = self.data_access['PREI_user']
         password = self.data_access['PREI_password']
         sub_path = os.path.abspath(os.path.join(PREI_path, ".."))

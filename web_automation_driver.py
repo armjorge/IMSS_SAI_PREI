@@ -5,6 +5,8 @@ from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from helpers import Helper
+
 
 
 class WebAutomationDriver:
@@ -14,6 +16,8 @@ class WebAutomationDriver:
         self.home = Path.home()
         self._validate_downloads_path()
         self._set_chrome_paths()
+        self.helper = Helper()
+
     
     def _validate_downloads_path(self):
         """Validate that the downloads path exists and is a directory."""
@@ -135,9 +139,49 @@ class WebAutomationDriver:
     
     def create_driver(self, custom_downloads_path=None):
         """Create and return a Chrome WebDriver instance."""
-        if not self.ensure_chrome_installed():
-            raise RuntimeError("Failed to install or locate Chrome components")
-        
+
+        system = platform.system()
+        home = os.path.expanduser("~")
+
+        if system == "Windows":
+            chrome_binary_path = os.path.join(home, "Documents", "chrome-win64", "chrome.exe")
+            chromedriver_path = os.path.join(home, "Documents", "chromedriver-win64", "chromedriver.exe")
+        elif system == "Darwin":
+            machine = platform.machine().lower()
+            arch_suffix = "arm64" if "arm" in machine else "x64"
+            chrome_binary_path = os.path.join(
+                home,
+                "chrome_testing",
+                f"chrome-mac-{arch_suffix}",
+                "Google Chrome for Testing.app",
+                "Contents",
+                "MacOS",
+                "Google Chrome for Testing",
+            )
+            chromedriver_path = os.path.join(
+                home,
+                "chrome_testing",
+                f"chromedriver-mac-{arch_suffix}",
+                "chromedriver",
+            )
+        else:
+            print(f"❌ Unsupported OS: {system}")
+            return None
+
+        if not os.path.exists(chrome_binary_path) or not os.path.exists(chromedriver_path):
+            print("⚠️ Chrome o Chromedriver no encontrados. Iniciando instalación guiada...")
+            chrome_binary_path, chromedriver_path = self.helper.install_chromedriver()
+
+        if not chrome_binary_path or not chromedriver_path:
+            print("❌ No se obtuvieron rutas válidas para Chrome.")
+            return None
+
+        if not os.path.exists(chrome_binary_path) or not os.path.exists(chromedriver_path):
+            print("❌ Las rutas configuradas para Chrome/Chromedriver no existen.")
+            print(f"   Chrome: {chrome_binary_path}")
+            print(f"   Chromedriver: {chromedriver_path}")
+            return None
+        # Usual path 
         # Use custom path if provided, otherwise use instance path
         downloads_path = Path(custom_downloads_path) if custom_downloads_path else self.downloads_path
         
@@ -184,3 +228,4 @@ class WebAutomationDriver:
     def list_downloaded_files(self):
         """List all files in the downloads directory."""
         return list(self.downloads_path.iterdir())
+    
