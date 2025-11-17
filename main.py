@@ -71,7 +71,7 @@ class MiniImssApp:
                 "Transformación:\n"
                 "\t4) Integrar información\n"
                 "Carga:\n"
-                "\t5) Actualizar SQL (Longitudinal)\n"                
+                "\t5) Actualizar\n"                
                 "\t6) Ejecutar consultas SQL\n"
                 "Análisis:\n"
                 "\t7) Inteligencia de negocios\n"
@@ -106,7 +106,7 @@ class MiniImssApp:
                 self.data_integration.integrar_datos()
 
             elif choice == "5":
-                print("🔄 Actualizando SQL (Longitudinal)")
+                print("🔄 Actualizando...")
                 self.sql_integration.postgresql_main_menu()
                 print("Generación de agrupaciones y reportes")
 

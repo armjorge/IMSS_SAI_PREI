@@ -111,6 +111,38 @@ class SQL_CONNEXION_UPDATING:
         if not xlsx_files:
             print("⚠️ No se encontraron archivos Excel en la ruta de integración.")
             return
+        print(f"📁 Archivos encontrados: {len(xlsx_files)}")
+        files_uploaded = []
+        file_dates_query = f"SELECT DISTINCT file_date FROM {schema}.{table_name}"
+        df_files = pd.read_sql(file_dates_query, self.sql_conexion())
+
+        if not df_files.empty:
+            #print(df_files.head())
+            files_uploaded = df_files["file_date"].tolist()
+        print(f"🔍 Archivos ya cargados (file_date): {len(files_uploaded)}")
+
+        uploaded_dates_str = {d.strftime("%Y-%m-%d") for d in files_uploaded}
+        print(f"📌 Fechas ya cargadas (normalizadas): {uploaded_dates_str}")
+        # --- Filtrar archivos locales por fecha en nombre ---
+        xlsx_files_filtered = []
+        for f in xlsx_files:
+            # Extraer fecha del nombre: busca patrón YYYY-MM-DD
+            match = re.search(r"\d{4}-\d{2}-\d{2}", os.path.basename(f))
+            if not match:
+                continue  # Saltar archivos sin fecha
+            file_date = match.group(0)
+
+            # Mantener solo archivos NO cargados
+            if file_date not in uploaded_dates_str:
+                xlsx_files_filtered.append(f)
+            else:
+                print(f"⏩ Saltando {os.path.basename(f)} porque {file_date} ya existe en SQL")
+
+        # Reemplazar la lista original
+        xlsx_files = xlsx_files_filtered
+
+        print(f"📁 Archivos a procesar ahora: {len(xlsx_files)}")
+
 
         # Concatenar todos los df_altas de cada archivo
         drop_columns   = columns_dict.get("drop_columns")
