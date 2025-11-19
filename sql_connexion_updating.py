@@ -119,27 +119,41 @@ class SQL_CONNEXION_UPDATING:
         if not df_files.empty:
             #print(df_files.head())
             files_uploaded = df_files["file_date"].tolist()
-        print(f"🔍 Archivos ya cargados (file_date): {len(files_uploaded)}")
+                # Normalizar las fechas ya cargadas a datetime (incluye hora)
+        # Normalizar fechas ya cargadas (datetime completos)
+        files_uploaded_dt = set()
+        for d in files_uploaded:
+            files_uploaded_dt.add(pd.to_datetime(d))
 
-        uploaded_dates_str = {d.strftime("%Y-%m-%d") for d in files_uploaded}
-        print(f"📌 Fechas ya cargadas (normalizadas): {uploaded_dates_str}")
-        # --- Filtrar archivos locales por fecha en nombre ---
+        print(f"🔍 Timestamps ya cargados en SQL: {files_uploaded_dt}")
+
+        # --- Filtrar archivos locales por timestamp YYYY-MM-DD-HH ---
         xlsx_files_filtered = []
         for f in xlsx_files:
-            # Extraer fecha del nombre: busca patrón YYYY-MM-DD
-            match = re.search(r"\d{4}-\d{2}-\d{2}", os.path.basename(f))
-            if not match:
-                continue  # Saltar archivos sin fecha
-            file_date = match.group(0)
+            base = os.path.basename(f)
 
-            # Mantener solo archivos NO cargados
-            if file_date not in uploaded_dates_str:
+            # Buscar patrón YYYY-MM-DD-HH
+            match = re.search(r"(\d{4}-\d{2}-\d{2})-(\d{2})", base)
+            if not match:
+                print(f"⚠️ No se encontró fecha+hora truncada en: {base}")
+                continue
+
+            date_part = match.group(1)   # YYYY-MM-DD
+            hour = match.group(2)        # HH
+
+            # Reconstruir timestamp: minutos y segundos = 00:00
+            file_timestamp = pd.to_datetime(f"{date_part} {hour}:00:00")
+
+            # Comparar con SQL
+            if file_timestamp not in files_uploaded_dt:
                 xlsx_files_filtered.append(f)
             else:
-                print(f"⏩ Saltando {os.path.basename(f)} porque {file_date} ya existe en SQL")
+                print(f"⏩ Saltando {base} porque {file_timestamp} ya existe en SQL")
 
         # Reemplazar la lista original
         xlsx_files = xlsx_files_filtered
+
+
 
         print(f"📁 Archivos a procesar ahora: {len(xlsx_files)}")
 
